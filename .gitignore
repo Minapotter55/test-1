@@ -1,7 +1,15 @@
-# Xcode
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
 build/
-DerivedData/
-*.xcuserstate
-xcuserdata/
-*.xcworkspace/xcuserdata/
+coverage/
+*.iml
+.idea/
+.metadata
 .DS_Store
+
+# Screenshots produced by test/screenshots_test.dart
+test/goldens/
