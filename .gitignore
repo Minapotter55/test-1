@@ -13,3 +13,8 @@ coverage/
 
 # Screenshots produced by test/screenshots_test.dart
 test/goldens/
+
+# Android signing key (never commit)
+android/key.properties
+*.jks
+*.keystore

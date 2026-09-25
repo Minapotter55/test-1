@@ -5,9 +5,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  FLUTTER_VERSION: '3.47.5'
+  # Version shown in the app and used by Android to allow in-place updates.
+  BUILD_NAME: 1.0.${{ github.run_number }}
+  BUILD_NUMBER: ${{ github.run_number }}
+
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -16,20 +25,34 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.5'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      # Optional Google Drive keys, stored as repository secrets (see README).
+
+      # Optional fixed signing key (see README): keeps updates installable over older versions.
+      - name: Set up signing key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=clientpro
+          keyPassword=$KEYSTORE_PASSWORD
+          EOF
+
       - run: >
           flutter build apk --release
+          --build-name=${{ env.BUILD_NAME }} --build-number=${{ env.BUILD_NUMBER }}
           --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      - run: cp build/app/outputs/flutter-apk/app-release.apk ClientPro.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: ClientPro-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: ClientPro-android
+          path: ClientPro.apk
 
   ios:
     runs-on: macos-latest
@@ -37,11 +60,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.5'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
-      # Compile check only; installing on an iPhone needs signing in Xcode (see README).
       - run: >
           flutter build ios --release --no-codesign
+          --build-name=${{ env.BUILD_NAME }} --build-number=${{ env.BUILD_NUMBER }}
           --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+      # Unsigned .ipa: install with Sideloadly / AltStore using your Apple ID (see README).
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr ClientPro-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClientPro-ios
+          path: ClientPro-unsigned.ipa
+
+  release:
+    # Publish ready-to-install files for every push to the main or app branch.
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/customer-management-ios-app-5zau5e')
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.BUILD_NAME }}
+          target_commitish: ${{ github.sha }}
+          name: ClientPro ${{ env.BUILD_NAME }}
+          make_latest: 'true'
+          files: |
+            ClientPro.apk
+            ClientPro-unsigned.ipa
+          body: |
+            ## تحميل التطبيق
+
+            **أندرويد:** نزّل `ClientPro.apk` وافتحه على الموبايل عشان يتسطّب (اسمح بالتثبيت من مصادر غير معروفة لو طلب).
+
+            **آيفون:** نزّل `ClientPro-unsigned.ipa` وسطّبه بـ [Sideloadly](https://sideloadly.io) أو AltStore باستخدام حساب Apple بتاعك. الخطوات في README.
