@@ -49,10 +49,18 @@ jobs:
           --build-name=${{ env.BUILD_NAME }} --build-number=${{ env.BUILD_NUMBER }}
           --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
       - run: cp build/app/outputs/flutter-apk/app-release.apk ClientPro.apk
+      # Smaller APK for modern phones (arm64 only), easier to send over WhatsApp/Telegram.
+      - run: >
+          flutter build apk --release --split-per-abi --target-platform android-arm64
+          --build-name=${{ env.BUILD_NAME }} --build-number=${{ env.BUILD_NUMBER }}
+          --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      - run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ClientPro-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ClientPro-android
-          path: ClientPro.apk
+          path: |
+            ClientPro.apk
+            ClientPro-arm64.apk
 
   ios:
     runs-on: macos-latest
@@ -98,10 +106,11 @@ jobs:
           make_latest: 'true'
           files: |
             ClientPro.apk
+            ClientPro-arm64.apk
             ClientPro-unsigned.ipa
           body: |
             ## تحميل التطبيق
 
-            **أندرويد:** نزّل `ClientPro.apk` وافتحه على الموبايل عشان يتسطّب (اسمح بالتثبيت من مصادر غير معروفة لو طلب).
+            **أندرويد:** نزّل `ClientPro-arm64.apk` (أصغر، ويشتغل على أغلب الموبايلات الحديثة) أو `ClientPro.apk` (يشتغل على كل الأجهزة) وافتحه على الموبايل عشان يتسطّب (اسمح بالتثبيت من مصادر غير معروفة لو طلب).
 
             **آيفون:** نزّل `ClientPro-unsigned.ipa` وسطّبه بـ [Sideloadly](https://sideloadly.io) أو AltStore باستخدام حساب Apple بتاعك. الخطوات في README.

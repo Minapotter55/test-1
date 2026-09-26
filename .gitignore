@@ -18,3 +18,4 @@ test/goldens/
 android/key.properties
 *.jks
 *.keystore
+downloads/
