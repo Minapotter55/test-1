@@ -11,6 +11,7 @@ import 'package:clientpro/app_services.dart';
 import 'package:clientpro/data/prefs.dart';
 import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
+import 'package:clientpro/ui/screens/client_accounts_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
 import 'package:clientpro/ui/screens/reminders_screen.dart';
@@ -43,6 +44,7 @@ void main() {
     '3-invoice': (s) => InvoiceDetailScreen(id: s.invoices.all.firstWhere((i) => i.payments.isNotEmpty).id),
     '4-sync': (s) => const SyncScreen(),
     '5-reminders': (s) => const RemindersScreen(),
+    '6-client-accounts': (s) => const ClientAccountsScreen(),
   };
 
   for (final entry in pages.entries) {
@@ -58,7 +60,9 @@ void main() {
       await tester.pumpWidget(ClientProApp(services: services));
       await tester.pumpAndSettle();
       if (entry.value != null) {
-        tester.state<NavigatorState>(find.byType(Navigator).first).push(MaterialPageRoute<void>(builder: (_) => entry.value!(store)));
+        tester
+            .state<NavigatorState>(find.byType(Navigator).first)
+            .push(MaterialPageRoute<void>(builder: (_) => entry.value!(store)));
         await tester.pumpAndSettle();
       }
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/${entry.key}.png'));

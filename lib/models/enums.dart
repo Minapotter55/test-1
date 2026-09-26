@@ -132,3 +132,13 @@ const customerSources = [
   'زيارة مباشرة',
   'إعلان ممول',
 ];
+
+/// How a client is charged.
+enum FeeCycle {
+  none('بدون سعر ثابت'),
+  monthly('اشتراك شهري'),
+  oneTime('مبلغ مرة واحدة');
+
+  const FeeCycle(this.label);
+  final String label;
+}

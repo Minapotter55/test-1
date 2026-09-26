@@ -57,6 +57,9 @@ class Customer extends Entity {
     this.lastContactAt,
     this.birthday,
     List<CustomField>? customFields,
+    this.fee = 0,
+    this.feeCycle = FeeCycle.none,
+    this.billingDay = 1,
   }) : tags = tags ?? [],
        customFields = customFields ?? [],
        createdAt = createdAt ?? DateTime.now();
@@ -70,6 +73,13 @@ class Customer extends Entity {
   DateTime? lastContactAt;
   DateTime? birthday;
   List<CustomField> customFields;
+
+  /// Agreed price: monthly subscription or one-time amount.
+  double fee;
+  FeeCycle feeCycle;
+
+  /// Day of month the subscription is due (1-28).
+  int billingDay;
 
   String get whatsappNumber => whatsapp.isEmpty ? phone : whatsapp;
 
@@ -94,6 +104,9 @@ class Customer extends Entity {
     'lastContact': _ms(lastContactAt),
     'birthday': _ms(birthday),
     'fields': customFields.map((f) => f.toJson()).toList(),
+    'fee': fee,
+    'feeCycle': feeCycle.name,
+    'billingDay': billingDay,
   };
 
   factory Customer.fromJson(Map<String, dynamic> j) => Customer(
@@ -119,6 +132,9 @@ class Customer extends Entity {
         ?.whereType<Map>()
         .map((m) => CustomField.fromJson(Map<String, dynamic>.from(m)))
         .toList(),
+    fee: _double(j['fee']),
+    feeCycle: enumByName(FeeCycle.values, j['feeCycle'], FeeCycle.none),
+    billingDay: j['billingDay'] is num ? _int(j['billingDay']).clamp(1, 28) : 1,
   );
 }
 
@@ -239,6 +255,7 @@ class Invoice extends Entity {
     List<InvoiceItem>? items,
     List<Payment>? payments,
     DateTime? createdAt,
+    this.periodKey,
   }) : issueDate = issueDate ?? DateTime.now(),
        dueDate = dueDate ?? DateTime.now(),
        items = items ?? [],
@@ -256,6 +273,9 @@ class Invoice extends Entity {
   List<InvoiceItem> items;
   List<Payment> payments;
   DateTime createdAt;
+
+  /// "2026-09" when this is a client's monthly subscription invoice.
+  String? periodKey;
 
   double get subtotal => items.fold(0, (s, i) => s + i.total);
   double get taxable => (subtotal - discount).clamp(0, double.infinity).toDouble();
@@ -293,6 +313,7 @@ class Invoice extends Entity {
     'notes': notes,
     'items': items.map((i) => i.toJson()).toList(),
     'payments': payments.map((p) => p.toJson()).toList(),
+    'period': periodKey,
     'created': _ms(createdAt),
   };
 
@@ -315,6 +336,7 @@ class Invoice extends Entity {
         ?.whereType<Map>()
         .map((m) => Payment.fromJson(Map<String, dynamic>.from(m)))
         .toList(),
+    periodKey: j['period'] as String?,
     createdAt: _date(j['created']),
   );
 }
@@ -519,8 +541,11 @@ class Expense extends Entity {
     DateTime? date,
     this.category = ExpenseCategory.other,
     this.notes = '',
+    this.customerId,
   }) : date = date ?? DateTime.now();
 
+  /// Set when the money was spent on a specific client (ads, freelancer, materials...).
+  String? customerId;
   String title;
   double amount;
   DateTime date;
@@ -536,6 +561,7 @@ class Expense extends Entity {
     'date': _ms(date),
     'category': category.name,
     'notes': notes,
+    'customer': customerId,
   };
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -546,6 +572,7 @@ class Expense extends Entity {
     date: _date(j['date']),
     category: enumByName(ExpenseCategory.values, j['category'], ExpenseCategory.other),
     notes: _str(j['notes']),
+    customerId: j['customer'] as String?,
   );
 }
 

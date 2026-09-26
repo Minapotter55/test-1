@@ -110,7 +110,10 @@ void main() {
     final now = DateTime.now();
     final bytes = Exporter(store).buildMonthlyWorkbook(now);
     final excel = Excel.decodeBytes(bytes);
-    expect(excel.tables.keys, containsAll(['الملخص', 'الفواتير', 'المدفوعات', 'المصروفات', 'العملاء', 'المهام']));
+    expect(
+      excel.tables.keys,
+      containsAll(['الملخص', 'الفواتير', 'المدفوعات', 'المصروفات', 'ربحية العملاء', 'العملاء', 'المهام']),
+    );
     expect(excel.tables['العملاء']!.maxRows, store.customers.items.length + 1);
 
     final start = DateTime(now.year, now.month);

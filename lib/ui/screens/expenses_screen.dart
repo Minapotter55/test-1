@@ -76,7 +76,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         child: Icon(e.category.icon, color: e.category.color),
                       ),
                       title: Text(e.title),
-                      subtitle: Text('${e.category.label} • ${Fmt.date(e.date)}'),
+                      subtitle: Text(
+                        [
+                          e.category.label,
+                          Fmt.date(e.date),
+                          if (store.customer(e.customerId) != null) '👤 ${store.customer(e.customerId)!.name}',
+                        ].join(' • '),
+                      ),
                       trailing: Text(
                         Fmt.money(e.amount),
                         style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
@@ -91,8 +97,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 }
 
 class ExpenseFormScreen extends StatefulWidget {
-  const ExpenseFormScreen({super.key, this.expense});
+  const ExpenseFormScreen({super.key, this.expense, this.customerId});
   final Expense? expense;
+
+  /// Pre-selects the client this money was spent on.
+  final String? customerId;
 
   @override
   State<ExpenseFormScreen> createState() => _ExpenseFormScreenState();
@@ -105,6 +114,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late double _amount = _e?.amount ?? 0;
   late DateTime _date = _e?.date ?? DateTime.now();
   late ExpenseCategory _category = _e?.category ?? ExpenseCategory.other;
+  late String? _customerId = _e?.customerId ?? widget.customerId;
 
   @override
   void dispose() {
@@ -125,7 +135,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       ..amount = _amount
       ..date = _date
       ..category = _category
-      ..notes = _notes.text.trim();
+      ..notes = _notes.text.trim()
+      ..customerId = _customerId;
     store.upsert(store.expenses, e);
     Navigator.pop(context);
   }
@@ -147,6 +158,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           ),
           gap,
           AmountField(label: 'المبلغ *', value: _amount, suffix: Fmt.symbol, onChanged: (v) => _amount = v),
+          gap,
+          CustomerDropdown(
+            label: 'صرفته على عميل؟ (اختياري)',
+            value: _customerId,
+            onChanged: (v) => setState(() => _customerId = v),
+          ),
           gap,
           Wrap(
             spacing: 6,

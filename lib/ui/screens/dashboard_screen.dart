@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../services/drive_sync.dart';
 import '../../services/format.dart';
 import '../widgets.dart';
+import 'client_accounts_screen.dart';
 import 'customers_screen.dart';
 import 'deals_screen.dart';
 import 'expenses_screen.dart';
@@ -51,8 +52,12 @@ class DashboardScreen extends StatelessWidget {
       growth = '${change >= 0 ? '▲' : '▼'} ${Fmt.percent(change.abs())} عن الشهر الماضي';
     }
 
-    final topCustomers = customers.map((c) => (c, store.totalPaidBy(c.id))).where((e) => e.$2 > 0).toList()
-      ..sort((a, b) => b.$2.compareTo(a.$2));
+    final clientAccounts = store.clientAccounts(from: monthStart);
+    final subscribers = customers
+        .where((c) => c.feeCycle == FeeCycle.monthly && c.fee > 0 && c.status != CustomerStatus.inactive)
+        .toList();
+    final unpaidSubs = store.unpaidSubscriptions(now);
+    final toBill = store.subscribersToBill(now);
 
     return Scaffold(
       appBar: AppBar(
@@ -134,6 +139,50 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          SectionCard(
+            title: 'حسابات العملاء — ${Fmt.month(now)}',
+            icon: Icons.account_balance_wallet,
+            trailing: TextButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientAccountsScreen())),
+              child: const Text('الكل'),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (subscribers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${Fmt.number(subscribers.length)} مشترك شهري • '
+                      '${toBill.isNotEmpty ? '${Fmt.number(toBill.length)} فاتورة لم تصدر' : 'الفواتير صادرة'}'
+                      '${unpaidSubs.isNotEmpty ? ' • ${Fmt.number(unpaidSubs.length)} لم يدفعوا' : ''}',
+                      style: TextStyle(
+                        color: unpaidSubs.isNotEmpty || toBill.isNotEmpty ? Colors.orange : Colors.green,
+                      ),
+                    ),
+                  ),
+                if (clientAccounts.isEmpty)
+                  const Text('حدّد سعر كل عميل وسجّل اللي بتستلمه منه واللي بتصرفه عليه، وهتلاقي ربح كل عميل هنا.')
+                else
+                  for (final a in clientAccounts.take(5))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Avatar(name: a.customer.name, color: a.customer.status.color, size: 38),
+                      title: Text(a.customer.name),
+                      subtitle: Text('استلمت ${Fmt.compactMoney(a.income)} • صرفت ${Fmt.compactMoney(a.spent)}'),
+                      trailing: Text(
+                        Fmt.compactMoney(a.profit),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: a.profit >= 0 ? Colors.teal : Colors.red),
+                      ),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => CustomerDetailScreen(id: a.customer.id)),
+                      ),
+                    ),
+              ],
+            ),
+          ),
           if (target > 0) ...[
             const SizedBox(height: 12),
             SectionCard(
@@ -188,26 +237,6 @@ class DashboardScreen extends StatelessWidget {
             ),
             child: _Pipeline(deals: openDeals),
           ),
-          if (topCustomers.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SectionCard(
-              title: 'أفضل العملاء',
-              icon: Icons.star,
-              child: Column(
-                children: [
-                  for (final e in topCustomers.take(5))
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Avatar(name: e.$1.name, color: e.$1.status.color, size: 38),
-                      title: Text(e.$1.name),
-                      trailing: Text(Fmt.money(e.$2), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      onTap: () =>
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerDetailScreen(id: e.$1.id))),
-                    ),
-                ],
-              ),
-            ),
-          ],
           if (lowStock.isNotEmpty) ...[
             const SizedBox(height: 12),
             SectionCard(

@@ -49,6 +49,17 @@ void loadSampleData(AppStore store) {
       birthday: i == 1 ? DateTime(1995, now.month, (now.day % 28) + 1) : null,
       email: 'client${i + 1}@example.com',
     );
+    // Monthly retainers for active/VIP clients, a one-time project for the lead.
+    if (s.$4 == CustomerStatus.vip || s.$4 == CustomerStatus.active) {
+      c
+        ..feeCycle = FeeCycle.monthly
+        ..fee = [6000.0, 3500.0, 4500.0, 2500.0][i % 4]
+        ..billingDay = 5;
+    } else if (s.$4 == CustomerStatus.lead) {
+      c
+        ..feeCycle = FeeCycle.oneTime
+        ..fee = 15000;
+    }
     store.upsert(store.customers, c);
     customers.add(c);
   }
@@ -150,6 +161,20 @@ void loadSampleData(AppStore store) {
       final date = DateTime(start.year, start.month, e.$4);
       if (date.isAfter(now)) continue;
       store.upsert(store.expenses, Expense(title: e.$1, amount: e.$2, category: e.$3, date: date));
+    }
+    // Money spent on specific clients (ads budget, freelancers).
+    final clientCosts = [
+      ('ميزانية إعلانات', 1200.0 + m * 100, ExpenseCategory.marketing, 0),
+      ('مصمم فريلانس', 900.0, ExpenseCategory.salaries, 2),
+      ('تصوير منتجات', 700.0, ExpenseCategory.supplies, 7),
+    ];
+    for (final e in clientCosts) {
+      final date = DateTime(start.year, start.month, 12);
+      if (date.isAfter(now)) continue;
+      store.upsert(
+        store.expenses,
+        Expense(title: e.$1, amount: e.$2, category: e.$3, date: date, customerId: customers[e.$4].id),
+      );
     }
   }
 }

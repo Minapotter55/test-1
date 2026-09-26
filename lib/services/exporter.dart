@@ -126,9 +126,42 @@ class Exporter {
       ]);
     }
 
-    final exp = sheet('المصروفات', ['التاريخ', 'البند', 'التصنيف', 'المبلغ', 'ملاحظات']);
+    final exp = sheet('المصروفات', ['التاريخ', 'البند', 'التصنيف', 'المبلغ', 'على عميل', 'ملاحظات']);
     for (final e in expenses) {
-      exp.appendRow([d(e.date), t(e.title), t(e.category.label), n(e.amount), t(e.notes)]);
+      exp.appendRow([
+        d(e.date),
+        t(e.title),
+        t(e.category.label),
+        n(e.amount),
+        t(store.customer(e.customerId)?.name ?? ''),
+        t(e.notes),
+      ]);
+    }
+
+    final profit = sheet('ربحية العملاء', [
+      'العميل',
+      'نوع السعر',
+      'السعر',
+      'فواتير الشهر',
+      'المحصّل',
+      'المصروف عليه',
+      'صافي الربح',
+      'هامش الربح ٪',
+      'المستحق عليه',
+    ]);
+    for (final a in store.clientAccounts(from: start, to: end)) {
+      final c = a.customer;
+      profit.appendRow([
+        t(c.name),
+        t(c.feeCycle.label),
+        n(c.fee),
+        n(a.invoiced),
+        n(a.income),
+        n(a.spent),
+        n(a.profit),
+        n(double.parse(a.margin.toStringAsFixed(1))),
+        n(a.balance),
+      ]);
     }
 
     final cust = sheet('العملاء', [

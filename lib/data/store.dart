@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
+import '../services/format.dart';
 
 /// A typed set of records keyed by id.
 class Collection<T extends Entity> {
@@ -299,7 +300,109 @@ class AppStore extends ChangeNotifier {
       t.customerId = null;
       upsert(tasks, t);
     }
+    // Keep the money that was spent, just no longer linked to the client.
+    for (final e in expensesOf(c.id)) {
+      e.customerId = null;
+      upsert(expenses, e);
+    }
     delete(customers, c.id);
+  }
+
+  // MARK: Client accounting
+
+  List<Expense> expensesOf(String customerId) =>
+      expenses.all.where((e) => e.customerId == customerId).toList()..sort((a, b) => b.date.compareTo(a.date));
+
+  /// Income, spend and profit for one client, optionally within [from, to).
+  ClientAccount accountOf(Customer c, {DateTime? from, DateTime? to}) {
+    bool inRange(DateTime d) => (from == null || !d.isBefore(from)) && (to == null || d.isBefore(to));
+    final invs = invoicesOf(c.id).where((i) => i.state == InvoiceState.issued).toList();
+    return ClientAccount(
+      customer: c,
+      income: invs.expand((i) => i.payments).where((p) => inRange(p.date)).fold(0.0, (s, p) => s + p.amount),
+      invoiced: invs.where((i) => inRange(i.issueDate)).fold(0.0, (s, i) => s + i.total),
+      spent: expensesOf(c.id).where((e) => inRange(e.date)).fold(0.0, (s, e) => s + e.amount),
+      balance: invs.where((i) => i.status.isOutstanding).fold(0.0, (s, i) => s + i.balance),
+    );
+  }
+
+  /// Every client that has any money movement or a price, most profitable first.
+  List<ClientAccount> clientAccounts({DateTime? from, DateTime? to}) {
+    final list = customers.all
+        .map((c) => accountOf(c, from: from, to: to))
+        .where((a) => a.income != 0 || a.spent != 0 || a.balance != 0 || a.invoiced != 0 || a.customer.fee > 0)
+        .toList();
+    list.sort((a, b) => b.profit.compareTo(a.profit));
+    return list;
+  }
+
+  Invoice? subscriptionInvoice(String customerId, String periodKey) {
+    for (final i in invoices.all) {
+      if (i.customerId == customerId && i.periodKey == periodKey && i.state != InvoiceState.cancelled) return i;
+    }
+    return null;
+  }
+
+  /// Monthly subscribers that don't have an invoice for [month] yet.
+  List<Customer> subscribersToBill(DateTime month) {
+    final key = Fmt.monthKey(month);
+    return customers.all
+        .where((c) => c.feeCycle == FeeCycle.monthly && c.fee > 0 && c.status != CustomerStatus.inactive)
+        .where((c) => subscriptionInvoice(c.id, key) == null)
+        .toList();
+  }
+
+  /// Monthly subscribers whose invoice for [month] isn't fully paid.
+  List<(Customer, Invoice)> unpaidSubscriptions(DateTime month) {
+    final key = Fmt.monthKey(month);
+    return [
+      for (final c in customers.all)
+        if (c.feeCycle == FeeCycle.monthly)
+          if (subscriptionInvoice(c.id, key) case final inv? when inv.status.isOutstanding) (c, inv),
+    ];
+  }
+
+  /// Issues this month's subscription invoice for every subscriber that doesn't have one.
+  int issueMonthlyInvoices(DateTime month) {
+    final list = subscribersToBill(month);
+    for (final c in list) {
+      upsert(invoices, subscriptionInvoiceFor(c, month));
+    }
+    return list.length;
+  }
+
+  Invoice subscriptionInvoiceFor(Customer c, DateTime month) {
+    final day = c.billingDay.clamp(1, 28);
+    return Invoice(
+      number: takeInvoiceNumber(),
+      customerId: c.id,
+      issueDate: DateTime(month.year, month.month, 1),
+      dueDate: DateTime(month.year, month.month, day),
+      taxRate: business.defaultTaxRate,
+      periodKey: Fmt.monthKey(month),
+      items: [InvoiceItem(name: 'اشتراك شهر ${Fmt.month(month)}', quantity: 1, unitPrice: c.fee)],
+    );
+  }
+
+  /// "I received money from this client": creates a paid invoice in one step.
+  Invoice receiveMoney(
+    Customer c,
+    double amount, {
+    String note = '',
+    PaymentMethod method = PaymentMethod.cash,
+    DateTime? date,
+  }) {
+    final when = date ?? DateTime.now();
+    final inv = Invoice(
+      number: takeInvoiceNumber(),
+      customerId: c.id,
+      issueDate: when,
+      dueDate: when,
+      items: [InvoiceItem(name: note.isEmpty ? 'دفعة من العميل' : note, quantity: 1, unitPrice: amount)],
+      payments: [Payment(amount: amount, date: when, method: method, note: note)],
+    );
+    upsert(invoices, inv);
+    return inv;
   }
 
   @override
@@ -307,4 +410,32 @@ class AppStore extends ChangeNotifier {
     _saveTimer?.cancel();
     super.dispose();
   }
+}
+
+/// A client's money summary.
+class ClientAccount {
+  ClientAccount({
+    required this.customer,
+    required this.income,
+    required this.invoiced,
+    required this.spent,
+    required this.balance,
+  });
+
+  final Customer customer;
+
+  /// Money actually received.
+  final double income;
+
+  /// Total of issued invoices.
+  final double invoiced;
+
+  /// Money spent on this client.
+  final double spent;
+
+  /// Still owed by the client.
+  final double balance;
+
+  double get profit => income - spent;
+  double get margin => income > 0 ? profit / income * 100 : 0;
 }

@@ -6,6 +6,7 @@ import '../../models/models.dart';
 import '../../services/contact_actions.dart';
 import '../../services/format.dart';
 import '../widgets.dart';
+import 'client_accounts_screen.dart';
 import 'deals_screen.dart';
 import 'invoices_screen.dart';
 import 'tasks_screen.dart';
@@ -235,7 +236,7 @@ class CustomerDetailScreen extends StatelessWidget {
     }
 
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Scaffold(
         appBar: AppBar(
           title: Text(c.name),
@@ -371,20 +372,27 @@ class CustomerDetailScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _MiniStat(
-                            'إجمالي المشتريات',
-                            Fmt.compactMoney(store.totalInvoicedTo(c.id)),
-                            Colors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(child: _MiniStat('المدفوع', Fmt.compactMoney(store.totalPaidBy(c.id)), Colors.green)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _MiniStat('المستحق', Fmt.compactMoney(store.balanceOf(c.id)), Colors.orange)),
-                      ],
+                    Builder(
+                      builder: (context) {
+                        final acc = store.accountOf(c);
+                        return Row(
+                          children: [
+                            Expanded(child: _MiniStat('المحصّل', Fmt.compactMoney(acc.income), Colors.green)),
+                            const SizedBox(width: 6),
+                            Expanded(child: _MiniStat('المصروف عليه', Fmt.compactMoney(acc.spent), Colors.red)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _MiniStat(
+                                'الربح',
+                                Fmt.compactMoney(acc.profit),
+                                acc.profit >= 0 ? Colors.teal : Colors.red,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(child: _MiniStat('المستحق', Fmt.compactMoney(acc.balance), Colors.orange)),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -395,6 +403,7 @@ class CustomerDetailScreen extends StatelessWidget {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 tabs: [
+                  Tab(text: 'الحسابات'),
                   Tab(text: 'التواصل'),
                   Tab(text: 'الفواتير'),
                   Tab(text: 'المهام'),
@@ -406,6 +415,7 @@ class CustomerDetailScreen extends StatelessWidget {
           ],
           body: TabBarView(
             children: [
+              ClientAccountTab(customer: c),
               ListView(
                 children: [
                   ListTile(
@@ -683,6 +693,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   late int _rating = _c?.rating ?? 0;
   late final List<String> _tags = [...?_c?.tags];
   late DateTime? _birthday = _c?.birthday;
+  late double _fee = _c?.fee ?? 0;
+  late FeeCycle _feeCycle = _c?.feeCycle ?? FeeCycle.none;
+  late int _billingDay = _c?.billingDay ?? 1;
   late final List<(TextEditingController, TextEditingController)> _fields = [
     for (final f in _c?.customFields ?? <CustomField>[])
       (TextEditingController(text: f.key), TextEditingController(text: f.value)),
@@ -730,6 +743,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       ..rating = _rating
       ..tags = _tags
       ..birthday = _birthday
+      ..fee = _feeCycle == FeeCycle.none ? 0 : _fee
+      ..feeCycle = _feeCycle
+      ..billingDay = _billingDay
       ..customFields = [
         for (final f in _fields)
           if (f.$1.text.trim().isNotEmpty) CustomField(key: f.$1.text.trim(), value: f.$2.text.trim()),
@@ -786,6 +802,46 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             controller: _address,
             decoration: const InputDecoration(labelText: 'العنوان', prefixIcon: Icon(Icons.place)),
           ),
+          const Divider(height: 32),
+          Text('السعر المتفق عليه', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          SegmentedButton<FeeCycle>(
+            segments: const [
+              ButtonSegment(value: FeeCycle.none, label: Text('بدون')),
+              ButtonSegment(value: FeeCycle.monthly, label: Text('شهري')),
+              ButtonSegment(value: FeeCycle.oneTime, label: Text('مرة واحدة')),
+            ],
+            selected: {_feeCycle},
+            onSelectionChanged: (s) => setState(() => _feeCycle = s.first),
+          ),
+          if (_feeCycle != FeeCycle.none) ...[
+            gap,
+            Row(
+              children: [
+                Expanded(
+                  child: AmountField(
+                    label: _feeCycle == FeeCycle.monthly ? 'قيمة الاشتراك الشهري' : 'المبلغ',
+                    value: _fee,
+                    suffix: Fmt.symbol,
+                    onChanged: (v) => _fee = v,
+                  ),
+                ),
+                if (_feeCycle == FeeCycle.monthly) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _billingDay,
+                      decoration: const InputDecoration(labelText: 'يوم الاستحقاق'),
+                      items: [
+                        for (var d = 1; d <= 28; d++) DropdownMenuItem(value: d, child: Text('يوم ${Fmt.number(d)}')),
+                      ],
+                      onChanged: (v) => setState(() => _billingDay = v ?? 1),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
           const Divider(height: 32),
           DropdownButtonFormField<CustomerStatus>(
             initialValue: _status,

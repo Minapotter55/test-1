@@ -3,6 +3,7 @@ import 'package:clientpro/app_services.dart';
 import 'package:clientpro/data/prefs.dart';
 import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
+import 'package:clientpro/ui/screens/client_accounts_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
 import 'package:clientpro/ui/screens/deals_screen.dart';
 import 'package:clientpro/ui/screens/expenses_screen.dart';
@@ -86,6 +87,7 @@ void main() {
     'settings': (st) => const SettingsScreen(),
     'sync': (st) => const SyncScreen(),
     'reminders': (st) => const RemindersScreen(),
+    'client accounts': (st) => const ClientAccountsScreen(),
     'tasks': (st) => const TasksScreen(),
   };
 

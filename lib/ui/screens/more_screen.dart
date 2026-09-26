@@ -5,6 +5,7 @@ import '../../data/store.dart';
 import '../../services/drive_sync.dart';
 import '../../services/format.dart';
 import '../widgets.dart';
+import 'client_accounts_screen.dart';
 import 'deals_screen.dart';
 import 'expenses_screen.dart';
 import 'products_screen.dart';
@@ -68,6 +69,12 @@ class MoreScreen extends StatelessWidget {
             badge: lowStock > 0 ? Fmt.number(lowStock) : null,
           ),
           const _Header('المالية'),
+          link(
+            'حسابات العملاء (ربح كل عميل)',
+            Icons.account_balance_wallet,
+            Colors.teal,
+            () => const ClientAccountsScreen(),
+          ),
           link('المصروفات', Icons.account_balance_wallet, Colors.red, () => const ExpensesScreen()),
           link('التقارير', Icons.pie_chart, Colors.green, () => const ReportsScreen()),
           const _Header('البيانات والتنبيهات'),
