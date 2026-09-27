@@ -58,9 +58,24 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
     final unpaid = store.unpaidSubscriptions(now);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('حسابات العملاء')),
+      appBar: AppBar(
+        title: const Text('حسابات العملاء'),
+        actions: [
+          IconButton(
+            tooltip: 'الفواتير',
+            icon: const Icon(Icons.receipt_long),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InvoicesScreen())),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab-accounts',
+        onPressed: () => showMoneyEntryMenu(context),
+        icon: const Icon(Icons.add),
+        label: const Text('تسجيل حركة'),
+      ),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
+        padding: const EdgeInsets.only(bottom: 96),
         children: [
           ChipsBar<_Period>(
             options: _Period.values,
@@ -293,7 +308,7 @@ class ClientAccountTab extends StatelessWidget {
       for (final inv in store.invoicesOf(c.id).where((i) => i.state == InvoiceState.issued))
         for (final p in inv.payments) _Move(p.date, p.amount, '${p.method.label} • ${inv.number}', true, invoice: inv),
       for (final e in store.expensesOf(c.id))
-        _Move(e.date, e.amount, '${e.category.label} • ${e.title}', false, expense: e),
+        _Move(e.date, e.amount, '${e.categoryLabel} • ${e.title}', false, expense: e),
     ]..sort((a, b) => b.date.compareTo(a.date));
 
     final monthInvoice = c.feeCycle == FeeCycle.monthly ? store.subscriptionInvoice(c.id, Fmt.monthKey(now)) : null;
@@ -565,5 +580,151 @@ class _ReceiveMoneySheetState extends State<_ReceiveMoneySheet> {
         ],
       ),
     );
+  }
+}
+
+/// Lets the user choose a client (with search).
+Future<Customer?> pickCustomer(BuildContext context, {String title = 'اختر العميل'}) {
+  return showModalBottomSheet<Customer>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _CustomerPicker(title: title),
+  );
+}
+
+class _CustomerPicker extends StatefulWidget {
+  const _CustomerPicker({required this.title});
+  final String title;
+
+  @override
+  State<_CustomerPicker> createState() => _CustomerPickerState();
+}
+
+class _CustomerPickerState extends State<_CustomerPicker> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final list =
+        store.customers.all
+            .where((c) => _q.isEmpty || c.name.contains(_q) || c.sector.contains(_q) || c.contactPerson.contains(_q))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'ابحث باسم العميل'),
+              onChanged: (v) => setState(() => _q = v.trim()),
+            ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? const EmptyState(
+                    icon: Icons.people_outline,
+                    title: 'لا يوجد عملاء',
+                    message: 'أضف عميل الأول من تبويب العملاء',
+                  )
+                : ListView(
+                    children: [
+                      for (final c in list)
+                        ListTile(
+                          leading: Avatar(name: c.name, color: c.status.color, size: 38),
+                          title: Text(c.name),
+                          subtitle: c.sector.isEmpty ? null : Text(c.sector),
+                          onTap: () => Navigator.pop(context, c),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Quick menu to record any money movement.
+Future<void> showMoneyEntryMenu(BuildContext context) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Colors.green,
+              child: Icon(Icons.south_west, color: Colors.white),
+            ),
+            title: const Text('استلمت فلوس من عميل'),
+            onTap: () => Navigator.pop(ctx, 'in'),
+          ),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Colors.red,
+              child: Icon(Icons.north_east, color: Colors.white),
+            ),
+            title: const Text('صرفت على عميل'),
+            subtitle: const Text('إعلانات، فريلانسر، طباعة، مواصلات...'),
+            onTap: () => Navigator.pop(ctx, 'out'),
+          ),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Colors.brown,
+              child: Icon(Icons.business, color: Colors.white),
+            ),
+            title: const Text('مصروف عام للشغل'),
+            subtitle: const Text('إيجار، رواتب، إنترنت...'),
+            onTap: () => Navigator.pop(ctx, 'general'),
+          ),
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Colors.blue,
+              child: Icon(Icons.receipt_long, color: Colors.white),
+            ),
+            title: const Text('فاتورة جديدة لعميل'),
+            onTap: () => Navigator.pop(ctx, 'invoice'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (choice == null || !context.mounted) return;
+  switch (choice) {
+    case 'in':
+      final c = await pickCustomer(context, title: 'استلمت فلوس من مين؟');
+      if (c != null && context.mounted) showReceiveMoneySheet(context, c);
+    case 'out':
+      final c = await pickCustomer(context, title: 'صرفت على مين؟');
+      if (c != null && context.mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ExpenseFormScreen(customerId: c.id), fullscreenDialog: true),
+        );
+      }
+    case 'general':
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ExpenseFormScreen(), fullscreenDialog: true),
+      );
+    case 'invoice':
+      final c = await pickCustomer(context, title: 'فاتورة لمين؟');
+      if (c != null && context.mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => InvoiceFormScreen(customerId: c.id), fullscreenDialog: true),
+        );
+      }
   }
 }

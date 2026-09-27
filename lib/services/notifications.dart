@@ -187,6 +187,26 @@ class NotificationService {
       }
     }
 
+    if (prefs.notifyInvoices) {
+      for (final c in store.customers.all) {
+        final end = c.contractEnd;
+        if (end == null || c.status == CustomerStatus.inactive) continue;
+        for (final daysBefore in const [14, 3, 0]) {
+          final at = DateTime(end.year, end.month, end.day - daysBefore, 10);
+          if (!at.isAfter(now)) continue;
+          oneOff.add(
+            PlannedNotification(
+              at: at,
+              title: daysBefore == 0
+                  ? '📄 عقد ${c.name} بينتهي النهارده'
+                  : '📄 عقد ${c.name} بينتهي بعد $daysBefore يوم',
+              body: 'كلّمه عشان التجديد${c.fee > 0 ? ' — ${c.feeCycle.label} ${Fmt.money(c.fee)}' : ''}',
+            ),
+          );
+        }
+      }
+    }
+
     if (prefs.notifyBirthdays) {
       for (final c in store.customers.all) {
         final b = c.birthday;

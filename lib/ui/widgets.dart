@@ -338,6 +338,27 @@ Future<bool> confirm(
   return result ?? false;
 }
 
+/// Small dialog asking the user to type a value.
+Future<String?> promptText(BuildContext context, String title, {String hint = '', String initial = ''}) {
+  final c = TextEditingController(text: initial);
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: c,
+        autofocus: true,
+        decoration: InputDecoration(hintText: hint),
+        onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('إضافة')),
+      ],
+    ),
+  );
+}
+
 void toast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

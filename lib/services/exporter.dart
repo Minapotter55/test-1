@@ -131,7 +131,7 @@ class Exporter {
       exp.appendRow([
         d(e.date),
         t(e.title),
-        t(e.category.label),
+        t(e.categoryLabel),
         n(e.amount),
         t(store.customer(e.customerId)?.name ?? ''),
         t(e.notes),

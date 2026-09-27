@@ -6,7 +6,9 @@ import '../../services/drive_sync.dart';
 import '../../services/format.dart';
 import '../widgets.dart';
 import 'client_accounts_screen.dart';
+import 'customize_screen.dart';
 import 'deals_screen.dart';
+import 'invoices_screen.dart';
 import 'expenses_screen.dart';
 import 'products_screen.dart';
 import 'reminders_screen.dart';
@@ -75,9 +77,17 @@ class MoreScreen extends StatelessWidget {
             Colors.teal,
             () => const ClientAccountsScreen(),
           ),
-          link('المصروفات', Icons.account_balance_wallet, Colors.red, () => const ExpensesScreen()),
+          link('الفواتير', Icons.receipt_long, Colors.blue, () => const InvoicesScreen()),
+          link('المصروفات', Icons.money_off, Colors.red, () => const ExpensesScreen()),
           link('التقارير', Icons.pie_chart, Colors.green, () => const ReportsScreen()),
           const _Header('البيانات والتنبيهات'),
+          link(
+            'تخصيص الخانات',
+            Icons.tune,
+            Colors.indigo,
+            () => const CustomizeScreen(),
+            subtitle: 'القطاعات، الخانات الإضافية للعملاء، أنواع المصروفات',
+          ),
           link(
             'المزامنة والنسخ الاحتياطي',
             Icons.cloud_sync,

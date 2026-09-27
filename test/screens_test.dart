@@ -5,6 +5,7 @@ import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
 import 'package:clientpro/ui/screens/client_accounts_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
+import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/deals_screen.dart';
 import 'package:clientpro/ui/screens/expenses_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
@@ -63,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('لوحة التحكم'), findsOneWidget);
 
-    for (final tab in ['العملاء', 'الفواتير', 'المهام', 'المزيد', 'الرئيسية']) {
+    for (final tab in ['العملاء', 'الحسابات', 'المهام', 'المزيد', 'الرئيسية']) {
       await tester.tap(find.text(tab).last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: tab);
@@ -88,6 +89,8 @@ void main() {
     'sync': (st) => const SyncScreen(),
     'reminders': (st) => const RemindersScreen(),
     'client accounts': (st) => const ClientAccountsScreen(),
+    'customize fields': (st) => const CustomizeScreen(),
+    'new customer form': (st) => const CustomerFormScreen(),
     'tasks': (st) => const TasksScreen(),
   };
 
@@ -114,12 +117,12 @@ void main() {
     nav.push(MaterialPageRoute<void>(builder: (_) => const CustomerFormScreen()));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextField, 'اسم العميل *'), 'عميل جديد');
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العميل / الجهة *'), 'معمل الخبراء');
     await tester.enterText(find.widgetWithText(TextField, 'رقم الهاتف'), '01000000000');
     await tester.tap(find.text('حفظ').first);
     await tester.pumpAndSettle();
 
-    expect(s.store.customers.all.single.name, 'عميل جديد');
+    expect(s.store.customers.all.single.name, 'معمل الخبراء');
     expect(s.store.customers.all.single.phone, '01000000000');
   });
 }

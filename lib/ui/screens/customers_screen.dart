@@ -55,6 +55,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
           c.phone.contains(q) ||
           c.email.toLowerCase().contains(q) ||
           c.city.toLowerCase().contains(q) ||
+          c.sector.toLowerCase().contains(q) ||
+          c.contactPerson.toLowerCase().contains(q) ||
           c.tags.any((t) => t.toLowerCase().contains(q));
     }).toList();
 
@@ -184,8 +186,14 @@ class CustomerTile extends StatelessWidget {
         spacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (customer.sector.isNotEmpty) Pill(customer.sector, color: Colors.indigo),
           Pill(customer.status.label, color: customer.status.color),
-          if (customer.company.isNotEmpty) Text(customer.company, style: const TextStyle(fontSize: 12)),
+          if (customer.contractExpired)
+            const Pill('العقد انتهى', color: Colors.red, icon: Icons.event_busy)
+          else if (customer.contractEndingSoon)
+            const Pill('العقد قرب يخلص', color: Colors.orange, icon: Icons.event),
+          if (customer.feeCycle == FeeCycle.monthly && customer.fee > 0)
+            Text('${Fmt.compactMoney(customer.fee)}/شهر', style: const TextStyle(fontSize: 12)),
           if (customer.lastContactAt != null)
             Text(Fmt.relative(customer.lastContactAt!), style: const TextStyle(fontSize: 11)),
         ],
@@ -293,7 +301,24 @@ class CustomerDetailScreen extends StatelessWidget {
                     Avatar(name: c.name, color: c.status.color, size: 80),
                     const SizedBox(height: 8),
                     Text(c.name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                    if (c.company.isNotEmpty) Text(c.company),
+                    if (c.sector.isNotEmpty || c.company.isNotEmpty)
+                      Text([c.sector, c.company].where((x) => x.isNotEmpty).join(' • ')),
+                    if (c.contactPerson.isNotEmpty)
+                      Text(
+                        '👤 ${c.contactPerson}${c.contactRole.isEmpty ? '' : ' — ${c.contactRole}'}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    if (c.contractExpired || c.contractEndingSoon)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Pill(
+                          c.contractExpired
+                              ? 'العقد انتهى ${Fmt.date(c.contractEnd!)}'
+                              : 'العقد بينتهي ${Fmt.relative(c.contractEnd!)}',
+                          color: c.contractExpired ? Colors.red : Colors.orange,
+                          icon: Icons.event_busy,
+                        ),
+                      ),
                     const SizedBox(height: 6),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -479,6 +504,29 @@ class CustomerDetailScreen extends StatelessWidget {
               ),
               ListView(
                 children: [
+                  InfoTile('القطاع', c.sector, icon: Icons.local_hospital_outlined),
+                  InfoTile('الفرع / الجهة', c.company, icon: Icons.account_tree_outlined),
+                  InfoTile(
+                    'المسؤول',
+                    [c.contactPerson, c.contactRole].where((x) => x.isNotEmpty).join(' — '),
+                    icon: Icons.badge_outlined,
+                  ),
+                  InfoTile(
+                    'السعر',
+                    c.feeCycle == FeeCycle.none || c.fee == 0 ? '' : '${c.feeCycle.label}: ${Fmt.money(c.fee)}',
+                    icon: Icons.sell_outlined,
+                  ),
+                  InfoTile(
+                    'بداية التعاقد',
+                    c.contractStart == null ? '' : Fmt.date(c.contractStart!),
+                    icon: Icons.event,
+                  ),
+                  InfoTile(
+                    'نهاية التعاقد',
+                    c.contractEnd == null ? '' : Fmt.date(c.contractEnd!),
+                    icon: Icons.event_busy,
+                  ),
+                  InfoTile('الخدمات المتفق عليها', c.services.join('، '), icon: Icons.medical_services_outlined),
                   InfoTile('الهاتف', c.phone, icon: Icons.phone),
                   InfoTile('واتساب', c.whatsapp, icon: Icons.chat),
                   InfoTile('البريد', c.email, icon: Icons.email),
@@ -678,9 +726,13 @@ class CustomerFormScreen extends StatefulWidget {
 }
 
 class _CustomerFormScreenState extends State<CustomerFormScreen> {
+  late final AppStore _store = context.read<AppStore>();
   late final Customer? _c = widget.customer;
   late final _name = TextEditingController(text: _c?.name);
   late final _company = TextEditingController(text: _c?.company);
+  late final _sector = TextEditingController(text: _c?.sector);
+  late final _contact = TextEditingController(text: _c?.contactPerson);
+  late final _contactRole = TextEditingController(text: _c?.contactRole);
   late final _phone = TextEditingController(text: _c?.phone);
   late final _whatsapp = TextEditingController(text: _c?.whatsapp);
   late final _email = TextEditingController(text: _c?.email);
@@ -689,21 +741,46 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   late final _source = TextEditingController(text: _c?.source);
   late final _notes = TextEditingController(text: _c?.notes);
   late final _tag = TextEditingController();
-  late CustomerStatus _status = _c?.status ?? CustomerStatus.lead;
+  late CustomerStatus _status = _c?.status ?? CustomerStatus.active;
   late int _rating = _c?.rating ?? 0;
   late final List<String> _tags = [...?_c?.tags];
+  late final List<String> _services = [...?_c?.services];
   late DateTime? _birthday = _c?.birthday;
+  late DateTime? _contractStart = _c?.contractStart;
+  late DateTime? _contractEnd = _c?.contractEnd;
   late double _fee = _c?.fee ?? 0;
-  late FeeCycle _feeCycle = _c?.feeCycle ?? FeeCycle.none;
+  late FeeCycle _feeCycle = _c?.feeCycle ?? FeeCycle.monthly;
   late int _billingDay = _c?.billingDay ?? 1;
-  late final List<(TextEditingController, TextEditingController)> _fields = [
-    for (final f in _c?.customFields ?? <CustomField>[])
-      (TextEditingController(text: f.key), TextEditingController(text: f.value)),
-  ];
+
+  /// Template fields (from "تخصيص الخانات") first, then the client's own extra fields.
+  late final List<(TextEditingController, TextEditingController, bool)> _fields = () {
+    final existing = {for (final f in _c?.customFields ?? <CustomField>[]) f.key: f.value};
+    final templates = _store.business.clientFieldTemplates;
+    return [
+      for (final t in templates) (TextEditingController(text: t), TextEditingController(text: existing[t] ?? ''), true),
+      for (final e in existing.entries)
+        if (!templates.contains(e.key))
+          (TextEditingController(text: e.key), TextEditingController(text: e.value), false),
+    ];
+  }();
 
   @override
   void dispose() {
-    for (final c in [_name, _company, _phone, _whatsapp, _email, _city, _address, _source, _notes, _tag]) {
+    for (final c in [
+      _name,
+      _company,
+      _sector,
+      _contact,
+      _contactRole,
+      _phone,
+      _whatsapp,
+      _email,
+      _city,
+      _address,
+      _source,
+      _notes,
+      _tag,
+    ]) {
       c.dispose();
     }
     for (final f in _fields) {
@@ -724,14 +801,17 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
 
   void _save() {
     if (_name.text.trim().isEmpty) {
-      toast(context, 'اكتب اسم العميل');
+      toast(context, 'اكتب اسم العميل أو الجهة');
       return;
     }
-    final store = context.read<AppStore>();
     final c = _c ?? Customer();
+    final sector = _sector.text.trim();
     c
       ..name = _name.text.trim()
       ..company = _company.text.trim()
+      ..sector = sector
+      ..contactPerson = _contact.text.trim()
+      ..contactRole = _contactRole.text.trim()
       ..phone = _phone.text.trim()
       ..whatsapp = _whatsapp.text.trim()
       ..email = _email.text.trim()
@@ -742,180 +822,222 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       ..status = _status
       ..rating = _rating
       ..tags = _tags
+      ..services = _services
       ..birthday = _birthday
+      ..contractStart = _contractStart
+      ..contractEnd = _contractEnd
       ..fee = _feeCycle == FeeCycle.none ? 0 : _fee
       ..feeCycle = _feeCycle
       ..billingDay = _billingDay
       ..customFields = [
         for (final f in _fields)
-          if (f.$1.text.trim().isNotEmpty) CustomField(key: f.$1.text.trim(), value: f.$2.text.trim()),
+          if (f.$1.text.trim().isNotEmpty && f.$2.text.trim().isNotEmpty)
+            CustomField(key: f.$1.text.trim(), value: f.$2.text.trim()),
       ];
-    store.upsert(store.customers, c);
+    if (sector.isNotEmpty && !_store.business.sectors.contains(sector)) {
+      _store.updateBusiness((b) => b.sectors.add(sector));
+    }
+    _store.upsert(_store.customers, c);
     Navigator.pop(context);
   }
 
+  Widget _section(String title, IconData icon, List<Widget> children) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final w in children) ...[w, const SizedBox(height: 12)],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    String? hint,
+    IconData? icon,
+    TextInputType? type,
+    int lines = 1,
+  }) => TextField(
+    controller: c,
+    keyboardType: type,
+    maxLines: lines,
+    decoration: InputDecoration(labelText: label, hintText: hint, prefixIcon: icon == null ? null : Icon(icon)),
+  );
+
+  Widget _dateTile(String label, DateTime? value, ValueChanged<DateTime?> onChanged, {IconData icon = Icons.event}) =>
+      OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, padding: const EdgeInsets.all(14)),
+        icon: Icon(icon),
+        label: Row(
+          children: [
+            Expanded(child: Text(value == null ? label : '$label: ${Fmt.date(value)}')),
+            if (value != null) InkWell(onTap: () => onChanged(null), child: const Icon(Icons.clear, size: 18)),
+          ],
+        ),
+        onPressed: () async {
+          final d = await pickDate(context, value ?? DateTime.now(), first: DateTime(1950));
+          if (d != null) onChanged(d);
+        },
+      );
+
+  Widget _pickFromList(TextEditingController c, List<String> options) => options.isEmpty
+      ? const SizedBox.shrink()
+      : PopupMenuButton<String>(
+          icon: const Icon(Icons.arrow_drop_down_circle_outlined),
+          tooltip: 'اختر من القائمة',
+          itemBuilder: (_) => [for (final o in options) PopupMenuItem(value: o, child: Text(o))],
+          onSelected: (v) => setState(() => c.text = v),
+        );
+
   @override
   Widget build(BuildContext context) {
-    const gap = SizedBox(height: 12);
+    final store = context.watch<AppStore>();
+    final sectors = store.business.sectors;
+    final serviceNames = {...store.products.all.where((p) => p.isActive).map((p) => p.name), ..._services}.toList();
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_c == null ? 'عميل جديد' : 'تعديل العميل'),
+        title: Text(_c == null ? 'عميل جديد' : 'تعديل بيانات العميل'),
         actions: [TextButton(onPressed: _save, child: const Text('حفظ'))],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'اسم العميل *', prefixIcon: Icon(Icons.person)),
-          ),
-          gap,
-          TextField(
-            controller: _company,
-            decoration: const InputDecoration(labelText: 'الشركة / النشاط', prefixIcon: Icon(Icons.business)),
-          ),
-          gap,
-          TextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'رقم الهاتف', prefixIcon: Icon(Icons.phone)),
-          ),
-          gap,
-          TextField(
-            controller: _whatsapp,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'رقم واتساب (إذا كان مختلفاً)', prefixIcon: Icon(Icons.chat)),
-          ),
-          gap,
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: Icon(Icons.email)),
-          ),
-          gap,
-          TextField(
-            controller: _city,
-            decoration: const InputDecoration(labelText: 'المدينة', prefixIcon: Icon(Icons.location_city)),
-          ),
-          gap,
-          TextField(
-            controller: _address,
-            decoration: const InputDecoration(labelText: 'العنوان', prefixIcon: Icon(Icons.place)),
-          ),
-          const Divider(height: 32),
-          Text('السعر المتفق عليه', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          SegmentedButton<FeeCycle>(
-            segments: const [
-              ButtonSegment(value: FeeCycle.none, label: Text('بدون')),
-              ButtonSegment(value: FeeCycle.monthly, label: Text('شهري')),
-              ButtonSegment(value: FeeCycle.oneTime, label: Text('مرة واحدة')),
-            ],
-            selected: {_feeCycle},
-            onSelectionChanged: (s) => setState(() => _feeCycle = s.first),
-          ),
-          if (_feeCycle != FeeCycle.none) ...[
-            gap,
-            Row(
-              children: [
-                Expanded(
-                  child: AmountField(
-                    label: _feeCycle == FeeCycle.monthly ? 'قيمة الاشتراك الشهري' : 'المبلغ',
-                    value: _fee,
-                    suffix: Fmt.symbol,
-                    onChanged: (v) => _fee = v,
-                  ),
-                ),
-                if (_feeCycle == FeeCycle.monthly) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _billingDay,
-                      decoration: const InputDecoration(labelText: 'يوم الاستحقاق'),
-                      items: [
-                        for (var d = 1; d <= 28; d++) DropdownMenuItem(value: d, child: Text('يوم ${Fmt.number(d)}')),
-                      ],
-                      onChanged: (v) => setState(() => _billingDay = v ?? 1),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-          const Divider(height: 32),
-          DropdownButtonFormField<CustomerStatus>(
-            initialValue: _status,
-            decoration: const InputDecoration(labelText: 'الحالة'),
-            items: [for (final s in CustomerStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
-            onChanged: (v) => setState(() => _status = v ?? _status),
-          ),
-          gap,
-          Row(
-            children: [
-              const Text('التقييم'),
-              const Spacer(),
-              for (var i = 1; i <= 5; i++)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _rating = _rating == i ? 0 : i),
-                  icon: Icon(i <= _rating ? Icons.star : Icons.star_border, color: Colors.amber),
-                ),
-            ],
-          ),
-          TextField(
-            controller: _source,
-            decoration: InputDecoration(
-              labelText: 'مصدر العميل',
-              suffixIcon: PopupMenuButton<String>(
-                icon: const Icon(Icons.arrow_drop_down),
-                itemBuilder: (_) => [for (final s in customerSources) PopupMenuItem(value: s, child: Text(s))],
-                onSelected: (s) => _source.text = s,
+          _section('بيانات العميل', Icons.apartment, [
+            _field(_name, 'اسم العميل / الجهة *', hint: 'مثال: مستشفى الدمرداش، معمل الخبراء', icon: Icons.business),
+            TextField(
+              controller: _sector,
+              decoration: InputDecoration(
+                labelText: 'القطاع / نوع العميل',
+                hintText: 'مثال: مستشفى، عيادة أسنان، معمل تحاليل',
+                prefixIcon: const Icon(Icons.local_hospital_outlined),
+                suffixIcon: _pickFromList(_sector, sectors),
               ),
             ),
-          ),
-          gap,
-          Wrap(
-            spacing: 6,
-            children: [
-              for (final t in _tags) InputChip(label: Text(t), onDeleted: () => setState(() => _tags.remove(t))),
-            ],
-          ),
-          TextField(
-            controller: _tag,
-            onSubmitted: (_) => _addTag(),
-            decoration: InputDecoration(
-              labelText: 'وسوم (مثال: جملة، مميز)',
-              suffixIcon: IconButton(icon: const Icon(Icons.add), onPressed: _addTag),
+            _field(
+              _company,
+              'الفرع / الجهة التابع لها',
+              hint: 'مثال: فرع مدينة نصر',
+              icon: Icons.account_tree_outlined,
             ),
-          ),
-          gap,
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.cake),
-            title: Text(
-              _birthday == null ? 'تاريخ الميلاد (للتذكير بالتهنئة)' : 'تاريخ الميلاد: ${Fmt.date(_birthday!)}',
+            DropdownButtonFormField<CustomerStatus>(
+              initialValue: _status,
+              decoration: const InputDecoration(labelText: 'حالة التعامل', prefixIcon: Icon(Icons.flag_outlined)),
+              items: [for (final s in CustomerStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
+              onChanged: (v) => setState(() => _status = v ?? _status),
             ),
-            trailing: _birthday == null
-                ? null
-                : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _birthday = null)),
-            onTap: () async {
-              final d = await pickDate(context, _birthday ?? DateTime(1990), first: DateTime(1900));
-              if (d != null) setState(() => _birthday = d);
-            },
-          ),
-          const Divider(height: 32),
-          Text('حقول مخصصة', style: Theme.of(context).textTheme.titleSmall),
-          const Text('أضف أي معلومة تحتاجها: رقم العقد، المقاس، رقم السجل...', style: TextStyle(fontSize: 12)),
-          for (final f in _fields)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
+          ]),
+          _section('المسؤول والتواصل', Icons.person, [
+            _field(_contact, 'اسم المسؤول', hint: 'مثال: د. أحمد محمود', icon: Icons.badge_outlined),
+            _field(_contactRole, 'وظيفته', hint: 'مثال: مدير التسويق', icon: Icons.work_outline),
+            _field(_phone, 'رقم الهاتف', hint: '01xxxxxxxxx', icon: Icons.phone, type: TextInputType.phone),
+            _field(_whatsapp, 'رقم واتساب (لو مختلف)', icon: Icons.chat, type: TextInputType.phone),
+            _field(_email, 'البريد الإلكتروني', icon: Icons.email_outlined, type: TextInputType.emailAddress),
+            _field(_city, 'المدينة / المنطقة', hint: 'مثال: العباسية، القاهرة', icon: Icons.location_city),
+            _field(_address, 'العنوان', icon: Icons.place_outlined),
+            _dateTile('عيد ميلاد المسؤول', _birthday, (d) => setState(() => _birthday = d), icon: Icons.cake_outlined),
+          ]),
+          _section('التعاقد والسعر', Icons.request_quote, [
+            SegmentedButton<FeeCycle>(
+              segments: const [
+                ButtonSegment(value: FeeCycle.monthly, label: Text('شهري')),
+                ButtonSegment(value: FeeCycle.oneTime, label: Text('مرة واحدة')),
+                ButtonSegment(value: FeeCycle.none, label: Text('بدون')),
+              ],
+              selected: {_feeCycle},
+              onSelectionChanged: (s) => setState(() => _feeCycle = s.first),
+            ),
+            if (_feeCycle != FeeCycle.none)
+              Row(
+                children: [
+                  Expanded(
+                    child: AmountField(
+                      label: _feeCycle == FeeCycle.monthly ? 'قيمة الاشتراك الشهري' : 'قيمة التعاقد',
+                      value: _fee,
+                      suffix: Fmt.symbol,
+                      onChanged: (v) => _fee = v,
+                    ),
+                  ),
+                  if (_feeCycle == FeeCycle.monthly) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _billingDay,
+                        decoration: const InputDecoration(labelText: 'بيدفع يوم'),
+                        items: [for (var d = 1; d <= 28; d++) DropdownMenuItem(value: d, child: Text(Fmt.number(d)))],
+                        onChanged: (v) => setState(() => _billingDay = v ?? 1),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            _dateTile('بداية التعاقد', _contractStart, (d) => setState(() => _contractStart = d)),
+            _dateTile(
+              'نهاية التعاقد (هيجيلك تنبيه قبلها)',
+              _contractEnd,
+              (d) => setState(() => _contractEnd = d),
+              icon: Icons.event_busy,
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('الخدمات المتفق عليها'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final name in serviceNames)
+                      FilterChip(
+                        label: Text(name),
+                        selected: _services.contains(name),
+                        onSelected: (v) => setState(() => v ? _services.add(name) : _services.remove(name)),
+                      ),
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 16),
+                      label: const Text('خدمة أخرى'),
+                      onPressed: () async {
+                        final v = await promptText(
+                          context,
+                          'خدمة متفق عليها',
+                          hint: 'مثال: إدارة صفحات، حملات إعلانية',
+                        );
+                        if (v != null && v.isNotEmpty && !_services.contains(v)) setState(() => _services.add(v));
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ]),
+          _section('خانات إضافية', Icons.dynamic_form, [
+            const Text(
+              'املاها باللي تحبه. تقدر تضيف خانات تظهر لكل العملاء من المزيد ← تخصيص الخانات.',
+              style: TextStyle(fontSize: 12),
+            ),
+            for (final f in _fields)
+              Row(
                 children: [
                   Expanded(
                     flex: 2,
                     child: TextField(
                       controller: f.$1,
-                      decoration: const InputDecoration(labelText: 'اسم الحقل'),
+                      readOnly: f.$3,
+                      decoration: const InputDecoration(labelText: 'اسم الخانة'),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -926,25 +1048,57 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                       decoration: const InputDecoration(labelText: 'القيمة'),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: () => setState(() => _fields.remove(f)),
-                  ),
+                  if (!f.$3)
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: () => setState(() => _fields.remove(f)),
+                    ),
                 ],
               ),
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _fields.add((TextEditingController(), TextEditingController(), false))),
+              icon: const Icon(Icons.add),
+              label: const Text('إضافة خانة لهذا العميل'),
             ),
-          TextButton.icon(
-            onPressed: () => setState(() => _fields.add((TextEditingController(), TextEditingController()))),
-            icon: const Icon(Icons.add),
-            label: const Text('إضافة حقل'),
-          ),
-          gap,
-          TextField(
-            controller: _notes,
-            maxLines: 4,
-            decoration: const InputDecoration(labelText: 'ملاحظات'),
-          ),
-          const SizedBox(height: 16),
+          ]),
+          _section('تصنيف وملاحظات', Icons.notes, [
+            Row(
+              children: [
+                const Text('التقييم'),
+                const Spacer(),
+                for (var i = 1; i <= 5; i++)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _rating = _rating == i ? 0 : i),
+                    icon: Icon(i <= _rating ? Icons.star : Icons.star_border, color: Colors.amber),
+                  ),
+              ],
+            ),
+            TextField(
+              controller: _source,
+              decoration: InputDecoration(
+                labelText: 'عرفنا منين',
+                hintText: 'مثال: ترشيح، زيارة، فيسبوك',
+                suffixIcon: _pickFromList(_source, customerSources),
+              ),
+            ),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final t in _tags) InputChip(label: Text(t), onDeleted: () => setState(() => _tags.remove(t))),
+              ],
+            ),
+            TextField(
+              controller: _tag,
+              onSubmitted: (_) => _addTag(),
+              decoration: InputDecoration(
+                labelText: 'وسوم',
+                hintText: 'مثال: مهم، متأخر في الدفع',
+                suffixIcon: IconButton(icon: const Icon(Icons.add), onPressed: _addTag),
+              ),
+            ),
+            _field(_notes, 'ملاحظات', hint: 'أي تفاصيل عايز تفتكرها عن العميل', lines: 4),
+          ]),
           FilledButton(onPressed: _save, child: const Text('حفظ')),
           const SizedBox(height: 32),
         ],

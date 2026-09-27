@@ -85,4 +85,31 @@ void main() {
     s.deleteCustomer(c);
     expect(s.expenses.all.single.customerId, isNull);
   });
+
+  test('custom lists, contract fields and custom expense category sync', () {
+    final s = AppStore(persist: false);
+    s.updateBusiness((b) {
+      b.sectors.add('مركز علاج طبيعي');
+      b.clientFieldTemplates.add('اسم المدير المالي');
+      b.expenseCategories.add('طباعة');
+    });
+    final c = Customer(
+      name: 'معمل الخبراء',
+      sector: 'معمل تحاليل',
+      contactPerson: 'د. أحمد',
+      contractEnd: DateTime.now().add(const Duration(days: 10)),
+      services: ['حملة إعلانية'],
+    );
+    s.upsert(s.customers, c);
+    s.upsert(s.expenses, Expense(title: 'بروشورات', amount: 500, customerId: c.id, customCategory: 'طباعة'));
+
+    final copy = AppStore(persist: false)..replaceWith(s.snapshot());
+    expect(copy.business.sectors, contains('مركز علاج طبيعي'));
+    expect(copy.business.clientFieldTemplates, contains('اسم المدير المالي'));
+    final c2 = copy.customers.items[c.id]!;
+    expect((c2.sector, c2.contactPerson), ('معمل تحاليل', 'د. أحمد'));
+    expect(c2.services, ['حملة إعلانية']);
+    expect(c2.contractEndingSoon, isTrue);
+    expect(copy.expenses.all.single.categoryLabel, 'طباعة');
+  });
 }

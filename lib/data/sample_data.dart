@@ -11,55 +11,76 @@ void loadSampleData(AppStore store) {
   DateTime daysAhead(int d) => now.add(Duration(days: d));
 
   final products = [
-    Product(name: 'استشارة', price: 500, isService: true, category: 'خدمات'),
-    Product(name: 'باقة شهرية', price: 3000, cost: 800, isService: true, category: 'خدمات'),
-    Product(name: 'تصميم هوية بصرية', price: 7500, cost: 1500, isService: true, category: 'تصميم'),
-    Product(name: 'منتج أساسي', price: 250, cost: 120, trackStock: true, stock: 40, category: 'منتجات'),
-    Product(name: 'منتج مميز', price: 900, cost: 450, trackStock: true, stock: 3, category: 'منتجات'),
+    Product(name: 'إدارة صفحات السوشيال', price: 4000, cost: 1200, isService: true, category: 'سوشيال ميديا'),
+    Product(name: 'حملة إعلانية ممولة', price: 3000, cost: 1500, isService: true, category: 'إعلانات'),
+    Product(name: 'تصوير فيديو', price: 2500, cost: 900, isService: true, category: 'إنتاج'),
+    Product(name: 'تصميم بوستات', price: 1500, cost: 400, isService: true, category: 'تصميم'),
+    Product(name: 'استشارة تسويقية', price: 1000, isService: true, category: 'استشارات'),
   ];
   for (final p in products) {
     store.upsert(store.products, p);
   }
 
+  // Fictional healthcare clients (hospitals, clinics, labs).
   final seeds = [
-    ('أحمد محمود', '01001234567', 'شركة النور للتجارة', CustomerStatus.vip, 'القاهرة', 'ترشيح من عميل'),
-    ('سارة علي', '01112345678', '', CustomerStatus.active, 'الجيزة', 'إنستجرام'),
-    ('محمد حسن', '01223456789', 'مطعم الشرق', CustomerStatus.active, 'الإسكندرية', 'فيسبوك'),
-    ('منى إبراهيم', '01534567890', 'عيادة د. منى', CustomerStatus.prospect, 'المنصورة', 'إعلان ممول'),
-    ('خالد يوسف', '01045678901', 'معرض يوسف للسيارات', CustomerStatus.lead, 'القاهرة', 'الموقع'),
-    ('ياسمين طارق', '01156789012', '', CustomerStatus.active, 'طنطا', 'تيك توك'),
-    ('عمر سمير', '01267890123', 'صيدلية الشفاء', CustomerStatus.inactive, 'أسيوط', 'زيارة مباشرة'),
-    ('نورا عادل', '01078901234', 'أكاديمية نورا', CustomerStatus.vip, 'القاهرة', 'ترشيح من عميل'),
+    ('مستشفى النور التخصصي', 'مستشفى', 'د. أحمد محمود', 'مدير التسويق', CustomerStatus.vip, 'القاهرة', 6000.0),
+    (
+      'عيادات بسمة لطب الأسنان',
+      'عيادة أسنان',
+      'د. سارة علي',
+      'صاحبة العيادة',
+      CustomerStatus.active,
+      'مدينة نصر',
+      3500.0,
+    ),
+    ('معمل الحياة للتحاليل', 'معمل تحاليل', 'أ. محمد حسن', 'مدير الفروع', CustomerStatus.active, 'الإسكندرية', 4500.0),
+    ('مركز الشفاء للأشعة', 'مركز أشعة', 'د. منى إبراهيم', 'المدير الطبي', CustomerStatus.prospect, 'المنصورة', 0.0),
+    ('مستشفى الرحمة', 'مستشفى', 'أ. خالد يوسف', 'مدير العلاقات العامة', CustomerStatus.lead, 'القاهرة', 15000.0),
+    ('مركز الأمل الطبي', 'مركز طبي', 'د. ياسمين طارق', 'مديرة المركز', CustomerStatus.active, 'طنطا', 2500.0),
+    ('صيدليات الصحة', 'صيدلية', 'د. عمر سمير', 'المالك', CustomerStatus.inactive, 'أسيوط', 0.0),
+    ('عيادة د. نورا للجلدية', 'عيادة', 'د. نورا عادل', 'صاحبة العيادة', CustomerStatus.vip, 'الشيخ زايد', 5000.0),
+  ];
+  final serviceSets = [
+    ['إدارة صفحات السوشيال', 'حملة إعلانية ممولة', 'تصوير فيديو'],
+    ['إدارة صفحات السوشيال', 'تصميم بوستات'],
+    ['حملة إعلانية ممولة'],
+    ['استشارة تسويقية'],
+    ['تصوير فيديو', 'تصميم بوستات'],
+    ['إدارة صفحات السوشيال'],
+    <String>[],
+    ['إدارة صفحات السوشيال', 'حملة إعلانية ممولة'],
   ];
   final customers = <Customer>[];
   for (var i = 0; i < seeds.length; i++) {
     final s = seeds[i];
+    final monthly = s.$5 == CustomerStatus.vip || s.$5 == CustomerStatus.active;
     final c = Customer(
       name: s.$1,
-      phone: s.$2,
-      company: s.$3,
-      status: s.$4,
-      city: s.$5,
-      source: s.$6,
+      sector: s.$2,
+      contactPerson: s.$3,
+      contactRole: s.$4,
+      status: s.$5,
+      city: s.$6,
+      phone: '01${(i % 3)}${(12345678 + i * 1111111).toString().padLeft(8, '0').substring(0, 8)}',
+      source: ['ترشيح من عميل', 'زيارة مباشرة', 'فيسبوك', 'إعلان ممول'][i % 4],
       rating: [5, 4, 4, 3, 2, 4, 2, 5][i],
-      isFavorite: s.$4 == CustomerStatus.vip,
-      tags: [i.isEven ? 'جملة' : 'تجزئة'],
+      isFavorite: s.$5 == CustomerStatus.vip,
       createdAt: daysAgo(170 - i * 18),
       lastContactAt: daysAgo(i * 3 + 1),
-      birthday: i == 1 ? DateTime(1995, now.month, (now.day % 28) + 1) : null,
-      email: 'client${i + 1}@example.com',
+      birthday: i == 1 ? DateTime(1985, now.month, (now.day % 28) + 1) : null,
+      email: 'marketing${i + 1}@example.com',
+      services: serviceSets[i],
+      feeCycle: s.$7 == 0 ? FeeCycle.none : (monthly ? FeeCycle.monthly : FeeCycle.oneTime),
+      fee: s.$7,
+      billingDay: 5,
+      contractStart: monthly ? daysAgo(170 - i * 18) : null,
+      // One contract ends soon so the reminder shows up in the demo.
+      contractEnd: monthly ? (i == 1 ? daysAhead(10) : daysAhead(200 - i * 10)) : null,
+      customFields: [
+        if (monthly) CustomField(key: 'رقم التعاقد', value: 'C-${2026}-${(i + 1).toString().padLeft(3, '0')}'),
+        if (i == 0 || i == 2) CustomField(key: 'عدد الفروع', value: i == 0 ? '3' : '12'),
+      ],
     );
-    // Monthly retainers for active/VIP clients, a one-time project for the lead.
-    if (s.$4 == CustomerStatus.vip || s.$4 == CustomerStatus.active) {
-      c
-        ..feeCycle = FeeCycle.monthly
-        ..fee = [6000.0, 3500.0, 4500.0, 2500.0][i % 4]
-        ..billingDay = 5;
-    } else if (s.$4 == CustomerStatus.lead) {
-      c
-        ..feeCycle = FeeCycle.oneTime
-        ..fee = 15000;
-    }
     store.upsert(store.customers, c);
     customers.add(c);
   }
@@ -164,9 +185,9 @@ void loadSampleData(AppStore store) {
     }
     // Money spent on specific clients (ads budget, freelancers).
     final clientCosts = [
-      ('ميزانية إعلانات', 1200.0 + m * 100, ExpenseCategory.marketing, 0),
+      ('ميزانية إعلانات ممولة', 1200.0 + m * 100, ExpenseCategory.marketing, 0),
       ('مصمم فريلانس', 900.0, ExpenseCategory.salaries, 2),
-      ('تصوير منتجات', 700.0, ExpenseCategory.supplies, 7),
+      ('مصور فيديو', 700.0, ExpenseCategory.supplies, 7),
     ];
     for (final e in clientCosts) {
       final date = DateTime(start.year, start.month, 12);

@@ -92,11 +92,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
     final topItems = (byItem.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).take(6).toList();
 
-    final expenseSlices = [
-      for (final c in ExpenseCategory.values)
-        if (expenses.any((e) => e.category == c))
-          _Slice(c.label, expenses.where((e) => e.category == c).fold<double>(0, (s, e) => s + e.amount), c.color),
-    ]..sort((a, b) => b.value.compareTo(a.value));
+    final byCategory = <String, (double, Color)>{};
+    for (final e in expenses) {
+      final prev = byCategory[e.categoryLabel];
+      byCategory[e.categoryLabel] = (
+        (prev?.$1 ?? 0) + e.amount,
+        prev?.$2 ?? (e.customCategory.isEmpty ? e.category.color : _palette[byCategory.length % _palette.length]),
+      );
+    }
+    final expenseSlices = [for (final e in byCategory.entries) _Slice(e.key, e.value.$1, e.value.$2)]
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     final sources = <String, int>{};
     for (final c in newCustomers) {

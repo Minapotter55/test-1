@@ -60,7 +60,14 @@ class Customer extends Entity {
     this.fee = 0,
     this.feeCycle = FeeCycle.none,
     this.billingDay = 1,
+    this.sector = '',
+    this.contactPerson = '',
+    this.contactRole = '',
+    this.contractStart,
+    this.contractEnd,
+    List<String>? services,
   }) : tags = tags ?? [],
+       services = services ?? [],
        customFields = customFields ?? [],
        createdAt = createdAt ?? DateTime.now();
 
@@ -80,6 +87,28 @@ class Customer extends Entity {
 
   /// Day of month the subscription is due (1-28).
   int billingDay;
+
+  /// e.g. مستشفى / عيادة / معمل — from the user's own list.
+  String sector;
+
+  /// The person you deal with at the client and their job title.
+  String contactPerson;
+  String contactRole;
+
+  DateTime? contractStart;
+  DateTime? contractEnd;
+
+  /// Services agreed with this client (names from the services list or typed).
+  List<String> services;
+
+  bool get contractEndingSoon {
+    final end = contractEnd;
+    if (end == null) return false;
+    final days = end.difference(DateTime.now()).inDays;
+    return days >= 0 && days <= 30;
+  }
+
+  bool get contractExpired => contractEnd != null && contractEnd!.isBefore(DateTime.now());
 
   String get whatsappNumber => whatsapp.isEmpty ? phone : whatsapp;
 
@@ -107,6 +136,12 @@ class Customer extends Entity {
     'fee': fee,
     'feeCycle': feeCycle.name,
     'billingDay': billingDay,
+    'sector': sector,
+    'contact': contactPerson,
+    'contactRole': contactRole,
+    'contractStart': _ms(contractStart),
+    'contractEnd': _ms(contractEnd),
+    'services': services,
   };
 
   factory Customer.fromJson(Map<String, dynamic> j) => Customer(
@@ -135,6 +170,12 @@ class Customer extends Entity {
     fee: _double(j['fee']),
     feeCycle: enumByName(FeeCycle.values, j['feeCycle'], FeeCycle.none),
     billingDay: j['billingDay'] is num ? _int(j['billingDay']).clamp(1, 28) : 1,
+    sector: _str(j['sector']),
+    contactPerson: _str(j['contact']),
+    contactRole: _str(j['contactRole']),
+    contractStart: _date(j['contractStart']),
+    contractEnd: _date(j['contractEnd']),
+    services: (j['services'] as List?)?.whereType<String>().toList(),
   );
 }
 
@@ -542,7 +583,13 @@ class Expense extends Entity {
     this.category = ExpenseCategory.other,
     this.notes = '',
     this.customerId,
+    this.customCategory = '',
   }) : date = date ?? DateTime.now();
+
+  /// A category name the user typed (e.g. "طباعة بروشورات"); overrides [category]'s label.
+  String customCategory;
+
+  String get categoryLabel => customCategory.isNotEmpty ? customCategory : category.label;
 
   /// Set when the money was spent on a specific client (ads, freelancer, materials...).
   String? customerId;
@@ -562,6 +609,7 @@ class Expense extends Entity {
     'category': category.name,
     'notes': notes,
     'customer': customerId,
+    'customCat': customCategory,
   };
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -573,6 +621,7 @@ class Expense extends Entity {
     category: enumByName(ExpenseCategory.values, j['category'], ExpenseCategory.other),
     notes: _str(j['notes']),
     customerId: j['customer'] as String?,
+    customCategory: _str(j['customCat']),
   );
 }
 
@@ -594,7 +643,23 @@ class BusinessSettings {
     this.invoiceFooter = 'شكراً لتعاملكم معنا',
     this.monthlyTarget = 0,
     int? updatedAt,
-  }) : updatedAt = updatedAt ?? 0;
+    List<String>? sectors,
+    List<String>? expenseCategories,
+    List<String>? clientFieldTemplates,
+  }) : updatedAt = updatedAt ?? 0,
+       sectors = sectors ?? [...defaultSectors],
+       expenseCategories = expenseCategories ?? [],
+       clientFieldTemplates = clientFieldTemplates ?? [...defaultClientFields];
+
+  static const defaultSectors = ['مستشفى', 'عيادة', 'مركز طبي', 'معمل تحاليل', 'مركز أشعة', 'صيدلية', 'شركة'];
+  static const defaultClientFields = ['رقم التعاقد', 'عدد الفروع'];
+
+  /// The user's own lists, editable from "تخصيص الخانات".
+  List<String> sectors;
+  List<String> expenseCategories;
+
+  /// Extra fields that appear (empty) on every client, e.g. "رقم التعاقد".
+  List<String> clientFieldTemplates;
 
   String name, phone, email, address, taxId, logoBase64, currency, countryCode, invoicePrefix, invoiceFooter;
   int nextInvoiceNumber, defaultDueDays;
@@ -617,6 +682,9 @@ class BusinessSettings {
     'footer': invoiceFooter,
     'target': monthlyTarget,
     'u': updatedAt,
+    'sectors': sectors,
+    'expenseCats': expenseCategories,
+    'clientFields': clientFieldTemplates,
   };
 
   factory BusinessSettings.fromJson(Map<String, dynamic> j) => BusinessSettings(
@@ -635,5 +703,8 @@ class BusinessSettings {
     invoiceFooter: j['footer'] is String ? j['footer'] as String : '',
     monthlyTarget: _double(j['target']),
     updatedAt: j['u'] as int?,
+    sectors: (j['sectors'] as List?)?.whereType<String>().toList(),
+    expenseCategories: (j['expenseCats'] as List?)?.whereType<String>().toList(),
+    clientFieldTemplates: (j['clientFields'] as List?)?.whereType<String>().toList(),
   );
 }

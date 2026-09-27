@@ -14,13 +14,14 @@ class ExpensesScreen extends StatefulWidget {
 }
 
 class _ExpensesScreenState extends State<ExpensesScreen> {
-  ExpenseCategory? _category;
+  String? _category;
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<AppStore>();
     final all = store.expenses.all..sort((a, b) => b.date.compareTo(a.date));
-    final list = _category == null ? all : all.where((e) => e.category == _category).toList();
+    final list = _category == null ? all : all.where((e) => e.categoryLabel == _category).toList();
+    final labels = {for (final e in all) e.categoryLabel}.toList()..sort();
     final months = <DateTime, List<Expense>>{};
     for (final e in list) {
       months.putIfAbsent(startOfMonth(e.date), () => []).add(e);
@@ -49,10 +50,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           : ListView(
               padding: const EdgeInsets.only(bottom: 90),
               children: [
-                ChipsBar<ExpenseCategory>(
-                  options: [null, ...ExpenseCategory.values.where((c) => all.any((e) => e.category == c))],
+                ChipsBar<String>(
+                  options: [null, ...labels],
                   selected: _category,
-                  label: (c) => c?.label ?? 'الكل',
+                  label: (c) => c ?? 'الكل',
                   onSelected: (c) => setState(() => _category = c),
                 ),
                 for (final m in keys) ...[
@@ -78,7 +79,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       title: Text(e.title),
                       subtitle: Text(
                         [
-                          e.category.label,
+                          e.categoryLabel,
                           Fmt.date(e.date),
                           if (store.customer(e.customerId) != null) '👤 ${store.customer(e.customerId)!.name}',
                         ].join(' • '),
@@ -114,6 +115,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late double _amount = _e?.amount ?? 0;
   late DateTime _date = _e?.date ?? DateTime.now();
   late ExpenseCategory _category = _e?.category ?? ExpenseCategory.other;
+  late String _custom = _e?.customCategory ?? '';
   late String? _customerId = _e?.customerId ?? widget.customerId;
 
   @override
@@ -125,16 +127,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   void _save() {
     if (_title.text.trim().isEmpty || _amount <= 0) {
-      toast(context, 'اكتب البند والمبلغ');
+      toast(context, 'اكتب البيان والمبلغ');
       return;
     }
     final store = context.read<AppStore>();
+    if (_custom.isNotEmpty && !store.business.expenseCategories.contains(_custom)) {
+      store.updateBusiness((b) => b.expenseCategories.add(_custom));
+    }
     final e = _e ?? Expense();
     e
       ..title = _title.text.trim()
       ..amount = _amount
       ..date = _date
-      ..category = _category
+      ..category = _custom.isEmpty ? _category : ExpenseCategory.other
+      ..customCategory = _custom
       ..notes = _notes.text.trim()
       ..customerId = _customerId;
     store.upsert(store.expenses, e);
@@ -154,7 +160,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         children: [
           TextField(
             controller: _title,
-            decoration: const InputDecoration(labelText: 'البند *'),
+            decoration: const InputDecoration(labelText: 'البيان *', hintText: 'مثال: إعلانات ممولة لمعمل الخبراء'),
           ),
           gap,
           AmountField(label: 'المبلغ *', value: _amount, suffix: Fmt.symbol, onChanged: (v) => _amount = v),
@@ -165,6 +171,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             onChanged: (v) => setState(() => _customerId = v),
           ),
           gap,
+          Text('نوع المصروف', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
           Wrap(
             spacing: 6,
             runSpacing: 4,
@@ -173,9 +181,30 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 ChoiceChip(
                   avatar: Icon(c.icon, size: 16),
                   label: Text(c.label),
-                  selected: _category == c,
-                  onSelected: (_) => setState(() => _category = c),
+                  selected: _custom.isEmpty && _category == c,
+                  onSelected: (_) => setState(() {
+                    _category = c;
+                    _custom = '';
+                  }),
                 ),
+              for (final name in {
+                ...context.read<AppStore>().business.expenseCategories,
+                if (_custom.isNotEmpty) _custom,
+              })
+                ChoiceChip(
+                  avatar: const Icon(Icons.label, size: 16),
+                  label: Text(name),
+                  selected: _custom == name,
+                  onSelected: (_) => setState(() => _custom = name),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 16),
+                label: const Text('نوع جديد'),
+                onPressed: () async {
+                  final name = await promptText(context, 'نوع مصروف جديد', hint: 'مثال: طباعة بروشورات');
+                  if (name != null && name.isNotEmpty) setState(() => _custom = name);
+                },
+              ),
             ],
           ),
           ListTile(

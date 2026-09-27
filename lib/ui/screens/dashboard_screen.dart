@@ -57,6 +57,11 @@ class DashboardScreen extends StatelessWidget {
         .where((c) => c.feeCycle == FeeCycle.monthly && c.fee > 0 && c.status != CustomerStatus.inactive)
         .toList();
     final unpaidSubs = store.unpaidSubscriptions(now);
+    final endingContracts =
+        customers
+            .where((c) => c.contractEndingSoon || (c.contractExpired && c.status != CustomerStatus.inactive))
+            .toList()
+          ..sort((a, b) => a.contractEnd!.compareTo(b.contractEnd!));
     final toBill = store.subscribersToBill(now);
 
     return Scaffold(
@@ -210,6 +215,35 @@ class DashboardScreen extends StatelessWidget {
             icon: Icons.bar_chart,
             child: _RevenueChart(store: store),
           ),
+          if (endingContracts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SectionCard(
+              title: 'عقود قربت تخلص',
+              icon: Icons.event_busy,
+              child: Column(
+                children: [
+                  for (final c in endingContracts)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Avatar(name: c.name, color: c.status.color, size: 36),
+                      title: Text(c.name),
+                      subtitle: Text(
+                        c.contractExpired ? 'انتهى ${Fmt.date(c.contractEnd!)}' : 'ينتهي ${Fmt.date(c.contractEnd!)}',
+                      ),
+                      trailing: Text(
+                        Fmt.relative(c.contractEnd!),
+                        style: TextStyle(
+                          color: c.contractExpired ? Colors.red : Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onTap: () =>
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerDetailScreen(id: c.id))),
+                    ),
+                ],
+              ),
+            ),
+          ],
           if (focusTasks.isNotEmpty) ...[
             const SizedBox(height: 12),
             SectionCard(
@@ -281,10 +315,12 @@ class _SyncBanner extends StatelessWidget {
 class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    Widget action(String label, IconData icon, Color color, Widget Function() page) => Expanded(
+    void open(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page, fullscreenDialog: true));
+
+    Widget action(String label, IconData icon, Color color, VoidCallback onTap) => Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page(), fullscreenDialog: true)),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
@@ -304,11 +340,17 @@ class _QuickActions extends StatelessWidget {
 
     return Row(
       children: [
-        action('عميل', Icons.person_add_alt_1, Colors.blue, () => const CustomerFormScreen()),
-        action('فاتورة', Icons.note_add, Colors.green, () => const InvoiceFormScreen()),
-        action('مهمة', Icons.add_task, Colors.orange, () => const TaskFormScreen()),
-        action('صفقة', Icons.handshake, Colors.purple, () => const DealFormScreen()),
-        action('مصروف', Icons.remove_circle_outline, Colors.red, () => const ExpenseFormScreen()),
+        action('استلمت فلوس', Icons.south_west, Colors.green, () async {
+          final c = await pickCustomer(context, title: 'استلمت فلوس من مين؟');
+          if (c != null && context.mounted) showReceiveMoneySheet(context, c);
+        }),
+        action('صرفت', Icons.north_east, Colors.red, () async {
+          final c = await pickCustomer(context, title: 'صرفت على مين؟');
+          if (c != null && context.mounted) open(ExpenseFormScreen(customerId: c.id));
+        }),
+        action('عميل جديد', Icons.person_add_alt_1, Colors.blue, () => open(const CustomerFormScreen())),
+        action('فاتورة', Icons.note_add, Colors.indigo, () => open(const InvoiceFormScreen())),
+        action('تذكير', Icons.add_alarm, Colors.orange, () => open(const TaskFormScreen())),
       ],
     );
   }

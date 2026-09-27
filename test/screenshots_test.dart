@@ -13,6 +13,7 @@ import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
 import 'package:clientpro/ui/screens/client_accounts_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
+import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
 import 'package:clientpro/ui/screens/reminders_screen.dart';
 import 'package:clientpro/ui/screens/sync_screen.dart';
@@ -45,6 +46,8 @@ void main() {
     '4-sync': (s) => const SyncScreen(),
     '5-reminders': (s) => const RemindersScreen(),
     '6-client-accounts': (s) => const ClientAccountsScreen(),
+    '7-customer-form': (s) => CustomerFormScreen(customer: s.customers.all.first),
+    '8-customize': (s) => const CustomizeScreen(),
   };
 
   for (final entry in pages.entries) {

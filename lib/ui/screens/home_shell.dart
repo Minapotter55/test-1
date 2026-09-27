@@ -8,7 +8,7 @@ import '../../services/format.dart';
 import '../../services/notifications.dart';
 import 'customers_screen.dart';
 import 'dashboard_screen.dart';
-import 'invoices_screen.dart';
+import 'client_accounts_screen.dart';
 import 'more_screen.dart';
 import 'tasks_screen.dart';
 
@@ -36,7 +36,7 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           DashboardScreen(onOpenTab: (i) => setState(() => _index = i)),
           const CustomersScreen(),
-          const InvoicesScreen(),
+          const ClientAccountsScreen(),
           const TasksScreen(),
           const MoreScreen(),
         ],
@@ -56,9 +56,9 @@ class _HomeShellState extends State<HomeShell> {
             label: 'العملاء',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'الفواتير',
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: 'الحسابات',
           ),
           NavigationDestination(
             icon: Badge(
