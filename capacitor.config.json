@@ -1,0 +1,9 @@
+{
+  "appId": "com.masroofy.app",
+  "appName": "مصروفي",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "StatusBar": { "overlaysWebView": true }
+  }
+}

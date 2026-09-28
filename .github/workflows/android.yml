@@ -1,0 +1,86 @@
+name: Build Android APK
+
+on:
+  push:
+    paths:
+      - 'www/**'
+      - 'resources/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Parser tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Create Android project
+        run: |
+          cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
+          npx cap add android
+
+      - name: Permissions and icons
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          # المايك + السماح بالوصول لخدمة التعرف على الصوت في أندرويد 11+
+          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n</manifest>#' "$MANIFEST"
+          cat "$MANIFEST"
+          RES=android/app/src/main/res
+          rm -rf "$RES/mipmap-anydpi-v26"
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp resources/android/mipmap-$d/ic_launcher.png "$RES/mipmap-$d/ic_launcher.png"
+            cp resources/android/mipmap-$d/ic_launcher_round.png "$RES/mipmap-$d/ic_launcher_round.png"
+            rm -f "$RES/mipmap-$d/ic_launcher_foreground.png"
+          done
+
+      - name: Sync web app
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../Masroofy.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Masroofy-apk
+          path: Masroofy.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: مصروفي 1.0.${{ github.run_number }}
+          make_latest: 'true'
+          target_commitish: ${{ github.sha }}
+          body: |
+            نزّل Masroofy.apk على موبايل أندرويد وافتحه عشان تثبته.
+            لو ظهرت رسالة "مصدر غير معروف" اختار "السماح من هذا المصدر".
+          files: Masroofy.apk

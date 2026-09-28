@@ -1,0 +1,21 @@
+{
+  "name": "masroofy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "مصروفي: متابعة المصاريف بالصوت",
+  "scripts": {
+    "test": "node tests/parser.test.mjs"
+  },
+  "dependencies": {
+    "@capacitor-community/speech-recognition": "^7.0.1",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}
