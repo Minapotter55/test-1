@@ -73,13 +73,15 @@ jobs:
           name: Masroofy-apk
           path: Masroofy.apk
 
+      # إصدار ثابت باسم masroofy عشان اللينك ميتغيرش، ومنفصل عن إصدارات أي تطبيق تاني في الريبو
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: مصروفي 1.0.${{ github.run_number }}
-          make_latest: 'true'
+          tag_name: masroofy
+          name: مصروفي (أندرويد)
+          make_latest: 'false'
           target_commitish: ${{ github.sha }}
+          overwrite_files: true
           body: |
             نزّل Masroofy.apk على موبايل أندرويد وافتحه عشان تثبته.
             لو ظهرت رسالة "مصدر غير معروف" اختار "السماح من هذا المصدر".

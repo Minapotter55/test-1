@@ -20,7 +20,7 @@
 
 ### أندرويد
 نزّل آخر APK من هنا:
-https://github.com/Minapotter55/test-1/releases/latest/download/Masroofy.apk
+https://github.com/Minapotter55/test-1/releases/download/masroofy/Masroofy.apk
 
 افتح الملف ووافق على «التثبيت من مصادر غير معروفة».
 التسجيل بالصوت على أندرويد بيستخدم خدمة Google للتعرف على الكلام، فلازم يكون تطبيق Google موجود (موجود على أغلب الموبايلات).
