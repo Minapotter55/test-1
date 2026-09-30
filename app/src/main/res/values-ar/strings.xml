@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">نزّل</string>
+    <string name="tab_download">تنزيل</string>
+    <string name="tab_queue">القائمة</string>
+    <string name="tab_browser">المتصفح</string>
+    <string name="tab_settings">الإعدادات</string>
+
+    <string name="url_hint">الصق رابط الفيديو</string>
+    <string name="paste">لصق</string>
+    <string name="analyze">تحليل</string>
+    <string name="analyzing">جاري التحليل…</string>
+    <string name="download">تنزيل</string>
+    <string name="download_direct">تنزيل بدون تحليل</string>
+    <string name="engine_preparing">جاري تجهيز yt-dlp وFFmpeg…</string>
+    <string name="engine_failed">فشل تشغيل المحرك: %1$s</string>
+    <string name="analyze_failed">مقدرناش نستخرج الرابط ده.</string>
+    <string name="open_in_browser_hint">افتح الصفحة في المتصفح الداخلي عشان نكتشف تدفقات HLS/DASH.</string>
+    <string name="open_in_browser">افتح في المتصفح</string>
+    <string name="added_to_queue">اتضاف للقائمة</string>
+
+    <string name="mode_video">فيديو</string>
+    <string name="mode_audio">صوت فقط</string>
+    <string name="quality">الجودة</string>
+    <string name="prefer_60fps">تفضيل 60 FPS</string>
+    <string name="audio_format">صيغة الصوت</string>
+    <string name="subtitles">تحميل الترجمة ودمجها</string>
+    <string name="subtitle_langs">لغات الترجمة (مفصولة بفاصلة)</string>
+    <string name="allow_playlist">تنزيل قائمة التشغيل كلها</string>
+    <string name="available_heights">المتاح: %1$s</string>
+
+    <string name="queue_empty">مفيش تنزيلات لسه.</string>
+    <string name="status_queued">في الانتظار</string>
+    <string name="status_running">بيتنزّل %1$d%%</string>
+    <string name="status_processing">جاري المعالجة…</string>
+    <string name="status_paused">متوقف مؤقتًا</string>
+    <string name="status_done">خلص</string>
+    <string name="status_failed">فشل</string>
+    <string name="eta">فاضل %1$s</string>
+    <string name="pause">إيقاف</string>
+    <string name="resume">استئناف</string>
+    <string name="retry">إعادة</string>
+    <string name="remove">حذف</string>
+    <string name="open">فتح</string>
+    <string name="clear_finished">مسح المنتهي</string>
+
+    <string name="address_hint">ابحث أو اكتب العنوان</string>
+    <string name="go">اذهب</string>
+    <string name="back">رجوع</string>
+    <string name="detected_streams">التدفقات المكتشفة (%1$d)</string>
+    <string name="no_streams">شغّل الفيديو في الصفحة، والتدفقات اللي تتكشف هتظهر هنا.</string>
+    <string name="adblock_on">حجب الإعلانات شغال</string>
+
+    <string name="settings_defaults">الافتراضيات</string>
+    <string name="settings_engine">المحرك</string>
+    <string name="ytdlp_version">إصدار yt-dlp: %1$s</string>
+    <string name="update_ytdlp">تحديث yt-dlp</string>
+    <string name="updating">جاري التحديث…</string>
+    <string name="update_done">تم تحديث yt-dlp</string>
+    <string name="update_latest">أحدث إصدار بالفعل</string>
+    <string name="update_failed">فشل التحديث: %1$s</string>
+    <string name="settings_privacy">الخصوصية والتشخيص</string>
+    <string name="privacy_note">كل حاجة بتشتغل على جهازك. مفيش أي تحليلات. التوكنات والكوكيز وقيم الروابط والإيميلات بتتخفي من السجلات.</string>
+    <string name="copy_diagnostics">نسخ التشخيص</string>
+    <string name="copied">اتنسخ</string>
+    <string name="clear_logs">مسح السجلات</string>
+    <string name="saved_to">الملفات بتتحفظ في Download/Nazzel.</string>
+
+    <string name="notif_channel">التنزيلات</string>
+    <string name="notif_preparing">جاري تجهيز التنزيل…</string>
+</resources>
