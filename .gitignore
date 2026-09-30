@@ -19,3 +19,4 @@ android/key.properties
 *.jks
 *.keystore
 downloads/
+*.p12
