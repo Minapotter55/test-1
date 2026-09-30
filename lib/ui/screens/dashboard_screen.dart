@@ -11,7 +11,9 @@ import 'client_accounts_screen.dart';
 import 'customers_screen.dart';
 import 'deals_screen.dart';
 import 'expenses_screen.dart';
+import 'fixed_expenses_screen.dart';
 import 'invoices_screen.dart';
+import 'payroll_screen.dart';
 import 'reports_screen.dart';
 import 'sync_screen.dart';
 import 'tasks_screen.dart';
@@ -188,6 +190,10 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (store.employees.items.isNotEmpty || store.fixedExpenses.items.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CommitmentsCard(store: store, now: now),
+          ],
           if (target > 0) ...[
             const SizedBox(height: 12),
             SectionCard(
@@ -289,6 +295,95 @@ class DashboardScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+/// Salaries and fixed bills for this month: what's paid and what's coming.
+class _CommitmentsCard extends StatelessWidget {
+  const _CommitmentsCard({required this.store, required this.now});
+  final AppStore store;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final slips = store.payroll(now).where((p) => p.employee.isActive).toList();
+    final salaryTotal = slips.fold(0.0, (s, p) => s + p.gross);
+    final salaryLeft = slips.where((p) => !p.isPaid).fold(0.0, (s, p) => s + p.net);
+    final key = Fmt.monthKey(now);
+    final fixed = store.fixedExpenses.all.where((f) => f.isActive).toList();
+    final fixedPaid = fixed.fold(0.0, (s, f) => s + (store.fixedPayment(f.id, key)?.amount ?? 0));
+    final unpaid = store.unpaidFixed(now);
+    final fixedLeft = unpaid.fold(0.0, (s, f) => s + f.amount);
+    final due = unpaid.where((f) => f.dueDay <= now.day + 3).toList();
+    void open(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+    Widget row(String title, IconData icon, Color color, double total, double left, VoidCallback onTap) {
+      final done = total <= 0 ? 1.0 : ((total - left) / total).clamp(0.0, 1.0);
+      return InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 18, color: color),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(title)),
+                  Text(
+                    left > 0 ? 'باقي ${Fmt.compactMoney(left)}' : 'اتدفع ✅',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: left > 0 ? Colors.orange : Colors.green),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              LinearProgressIndicator(value: done, minHeight: 6, color: color, borderRadius: BorderRadius.circular(6)),
+              const SizedBox(height: 2),
+              Text('من ${Fmt.money(total)}', style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SectionCard(
+      title: 'التزامات ${Fmt.month(now)}',
+      icon: Icons.event_repeat,
+      trailing: Text(
+        Fmt.compactMoney(salaryTotal + fixed.fold(0.0, (s, f) => s + f.amount)),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (slips.isNotEmpty)
+            row('المرتبات (${Fmt.number(slips.length)} موظف)', Icons.badge, Colors.indigo, salaryTotal, salaryLeft, () {
+              open(const PayrollScreen());
+            }),
+          if (fixed.isNotEmpty)
+            row('المصاريف الثابتة', Icons.home_work, Colors.brown, fixedPaid + fixedLeft, fixedLeft, () {
+              open(const FixedExpensesScreen());
+            }),
+          for (final f in due.take(4))
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(fixedIcon(f), color: f.dueDay < now.day ? Colors.red : Colors.orange),
+              title: Text(f.title),
+              subtitle: Text(
+                f.dueDay < now.day
+                    ? 'متأخر — كان يوم ${Fmt.number(f.dueDay)}'
+                    : f.dueDay == now.day
+                    ? 'النهارده'
+                    : 'يوم ${Fmt.number(f.dueDay)}',
+              ),
+              trailing: Text(f.variable ? 'متغير' : Fmt.money(f.amount)),
+              onTap: () => open(const FixedExpensesScreen()),
+            ),
         ],
       ),
     );

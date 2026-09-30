@@ -5,6 +5,8 @@ import '../../data/store.dart';
 import '../../models/models.dart';
 import '../../services/format.dart';
 import '../widgets.dart';
+import 'fixed_expenses_screen.dart';
+import 'payroll_screen.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -33,7 +35,21 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('المصروفات')),
+      appBar: AppBar(
+        title: const Text('المصروفات'),
+        actions: [
+          IconButton(
+            tooltip: 'المصاريف الثابتة',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FixedExpensesScreen())),
+            icon: const Icon(Icons.event_repeat),
+          ),
+          IconButton(
+            tooltip: 'الموظفين والمرتبات',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PayrollScreen())),
+            icon: const Icon(Icons.badge),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-expenses',
         onPressed: open,

@@ -584,7 +584,23 @@ class Expense extends Entity {
     this.notes = '',
     this.customerId,
     this.customCategory = '',
+    this.employeeId,
+    this.fixedExpenseId,
+    this.adjustmentId,
+    this.periodKey,
   }) : date = date ?? DateTime.now();
+
+  /// Set when this is a salary payment / advance for an employee.
+  String? employeeId;
+
+  /// Set when this is a payment of a recurring fixed expense.
+  String? fixedExpenseId;
+
+  /// Set when this expense is the cash paid out for a salary advance.
+  String? adjustmentId;
+
+  /// "2026-09": the month a salary or fixed expense payment is for.
+  String? periodKey;
 
   /// A category name the user typed (e.g. "طباعة بروشورات"); overrides [category]'s label.
   String customCategory;
@@ -610,6 +626,10 @@ class Expense extends Entity {
     'notes': notes,
     'customer': customerId,
     'customCat': customCategory,
+    'employee': employeeId,
+    'fixed': fixedExpenseId,
+    'adjustment': adjustmentId,
+    'period': periodKey,
   };
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -622,6 +642,175 @@ class Expense extends Entity {
     notes: _str(j['notes']),
     customerId: j['customer'] as String?,
     customCategory: _str(j['customCat']),
+    employeeId: j['employee'] as String?,
+    fixedExpenseId: j['fixed'] as String?,
+    adjustmentId: j['adjustment'] as String?,
+    periodKey: j['period'] as String?,
+  );
+}
+
+class Employee extends Entity {
+  Employee({
+    super.id,
+    super.updatedAt,
+    this.name = '',
+    this.jobTitle = '',
+    this.phone = '',
+    this.salary = 0,
+    this.payDay = 1,
+    this.hireDate,
+    this.isActive = true,
+    this.notes = '',
+    List<CustomField>? customFields,
+  }) : customFields = customFields ?? [];
+
+  String name, jobTitle, phone, notes;
+
+  /// Base monthly salary.
+  double salary;
+
+  /// Day of month the salary is paid (1-28).
+  int payDay;
+  DateTime? hireDate;
+  bool isActive;
+  List<CustomField> customFields;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'u': updatedAt,
+    'name': name,
+    'job': jobTitle,
+    'phone': phone,
+    'salary': salary,
+    'payDay': payDay,
+    'hired': _ms(hireDate),
+    'active': isActive,
+    'notes': notes,
+    'fields': customFields.map((f) => f.toJson()).toList(),
+  };
+
+  factory Employee.fromJson(Map<String, dynamic> j) => Employee(
+    id: j['id'] as String?,
+    updatedAt: j['u'] as int?,
+    name: _str(j['name']),
+    jobTitle: _str(j['job']),
+    phone: _str(j['phone']),
+    salary: _double(j['salary']),
+    payDay: j['payDay'] is num ? _int(j['payDay']).clamp(1, 28) : 1,
+    hireDate: _date(j['hired']),
+    isActive: j['active'] != false,
+    notes: _str(j['notes']),
+    customFields: (j['fields'] as List?)
+        ?.whereType<Map>()
+        .map((m) => CustomField.fromJson(Map<String, dynamic>.from(m)))
+        .toList(),
+  );
+}
+
+/// A bonus, deduction, absence or advance for one employee in one month.
+class SalaryAdjustment extends Entity {
+  SalaryAdjustment({
+    super.id,
+    super.updatedAt,
+    required this.employeeId,
+    this.type = AdjustmentType.deduction,
+    this.amount = 0,
+    required this.periodKey,
+    DateTime? date,
+    this.reason = '',
+  }) : date = date ?? DateTime.now();
+
+  String employeeId;
+  AdjustmentType type;
+  double amount;
+
+  /// "2026-09": the salary month this applies to.
+  String periodKey;
+  DateTime date;
+  String reason;
+
+  double get signedAmount => amount * type.sign;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'u': updatedAt,
+    'employee': employeeId,
+    'type': type.name,
+    'amount': amount,
+    'period': periodKey,
+    'date': _ms(date),
+    'reason': reason,
+  };
+
+  factory SalaryAdjustment.fromJson(Map<String, dynamic> j) => SalaryAdjustment(
+    id: j['id'] as String?,
+    updatedAt: j['u'] as int?,
+    employeeId: _str(j['employee']),
+    type: enumByName(AdjustmentType.values, j['type'], AdjustmentType.deduction),
+    amount: _double(j['amount']),
+    periodKey: _str(j['period']),
+    date: _date(j['date']),
+    reason: _str(j['reason']),
+  );
+}
+
+/// A bill that comes every month: rent, water, electricity, internet...
+class FixedExpense extends Entity {
+  FixedExpense({
+    super.id,
+    super.updatedAt,
+    this.title = '',
+    this.amount = 0,
+    this.category = ExpenseCategory.other,
+    this.customCategory = '',
+    this.dueDay = 1,
+    this.variable = false,
+    this.isActive = true,
+    this.notes = '',
+  });
+
+  String title;
+
+  /// Usual amount (an estimate when [variable]).
+  double amount;
+  ExpenseCategory category;
+  String customCategory;
+  int dueDay;
+
+  /// The amount changes every month (e.g. electricity) — asked when paying.
+  bool variable;
+  bool isActive;
+  String notes;
+
+  String get categoryLabel => customCategory.isNotEmpty ? customCategory : category.label;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'u': updatedAt,
+    'title': title,
+    'amount': amount,
+    'category': category.name,
+    'customCat': customCategory,
+    'dueDay': dueDay,
+    'variable': variable,
+    'active': isActive,
+    'notes': notes,
+  };
+
+  factory FixedExpense.fromJson(Map<String, dynamic> j) => FixedExpense(
+    id: j['id'] as String?,
+    updatedAt: j['u'] as int?,
+    title: _str(j['title']),
+    amount: _double(j['amount']),
+    category: enumByName(ExpenseCategory.values, j['category'], ExpenseCategory.other),
+    customCategory: _str(j['customCat']),
+    dueDay: j['dueDay'] is num ? _int(j['dueDay']).clamp(1, 28) : 1,
+    variable: j['variable'] == true,
+    isActive: j['active'] != false,
+    notes: _str(j['notes']),
   );
 }
 

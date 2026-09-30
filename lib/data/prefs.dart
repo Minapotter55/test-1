@@ -64,6 +64,9 @@ class DevicePrefs extends ChangeNotifier {
   bool get notifyInvoices => _b('notifyInvoices', true);
   set notifyInvoices(bool v) => _set('notifyInvoices', v);
 
+  bool get notifyBills => _b('notifyBills', true);
+  set notifyBills(bool v) => _set('notifyBills', v);
+
   bool get notifyBirthdays => _b('notifyBirthdays', true);
   set notifyBirthdays(bool v) => _set('notifyBirthdays', v);
 

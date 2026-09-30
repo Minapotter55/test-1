@@ -73,8 +73,22 @@ class AppStore extends ChangeNotifier {
   final tasks = Collection<TaskItem>('tasks', TaskItem.fromJson);
   final interactions = Collection<Interaction>('interactions', Interaction.fromJson);
   final expenses = Collection<Expense>('expenses', Expense.fromJson);
+  final employees = Collection<Employee>('employees', Employee.fromJson);
+  final adjustments = Collection<SalaryAdjustment>('adjustments', SalaryAdjustment.fromJson);
+  final fixedExpenses = Collection<FixedExpense>('fixedExpenses', FixedExpense.fromJson);
 
-  late final List<Collection> _collections = [customers, deals, invoices, products, tasks, interactions, expenses];
+  late final List<Collection> _collections = [
+    customers,
+    deals,
+    invoices,
+    products,
+    tasks,
+    interactions,
+    expenses,
+    employees,
+    adjustments,
+    fixedExpenses,
+  ];
 
   BusinessSettings business = BusinessSettings();
   final Map<String, int> tombstones = {};
@@ -405,6 +419,174 @@ class AppStore extends ChangeNotifier {
     return inv;
   }
 
+  // MARK: Staff & payroll
+
+  Employee? employee(String? id) => id == null ? null : employees.items[id];
+
+  List<Employee> get sortedEmployees => employees.all
+    ..sort((a, b) {
+      if (a.isActive != b.isActive) return a.isActive ? -1 : 1;
+      return a.name.compareTo(b.name);
+    });
+
+  List<SalaryAdjustment> adjustmentsOf(String employeeId, {String? periodKey}) =>
+      adjustments.all
+          .where((a) => a.employeeId == employeeId && (periodKey == null || a.periodKey == periodKey))
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+
+  /// The salary payment already recorded for [employeeId] in [periodKey], if any.
+  Expense? salaryPayment(String employeeId, String periodKey) {
+    for (final e in expenses.all) {
+      if (e.employeeId == employeeId && e.periodKey == periodKey && e.adjustmentId == null) return e;
+    }
+    return null;
+  }
+
+  /// Every expense paid to an employee (salaries and advances), newest first.
+  List<Expense> paymentsTo(String employeeId) =>
+      expenses.all.where((e) => e.employeeId == employeeId).toList()..sort((a, b) => b.date.compareTo(a.date));
+
+  Payslip payslip(Employee e, DateTime month) {
+    final key = Fmt.monthKey(month);
+    final adj = adjustmentsOf(e.id, periodKey: key);
+    double sum(bool Function(SalaryAdjustment) test) => adj.where(test).fold(0.0, (s, a) => s + a.amount);
+    return Payslip(
+      employee: e,
+      periodKey: key,
+      base: e.salary,
+      additions: sum((a) => a.type.sign > 0),
+      deductions: sum((a) => a.type.sign < 0 && a.type != AdjustmentType.advance),
+      advances: sum((a) => a.type == AdjustmentType.advance),
+      adjustments: adj,
+      payment: salaryPayment(e.id, key),
+    );
+  }
+
+  /// Payslips for [month]: active employees plus anyone with activity that month.
+  List<Payslip> payroll(DateTime month) {
+    final key = Fmt.monthKey(month);
+    return [
+      for (final e in sortedEmployees)
+        if (e.isActive || salaryPayment(e.id, key) != null || adjustmentsOf(e.id, periodKey: key).isNotEmpty)
+          payslip(e, month),
+    ];
+  }
+
+  /// Records the salary for [month] as an expense (category: salaries).
+  Expense paySalary(Employee e, DateTime month, {DateTime? date, double? amount}) {
+    final slip = payslip(e, month);
+    final exp = slip.payment ?? Expense(employeeId: e.id, periodKey: slip.periodKey);
+    exp
+      ..title = 'مرتب ${e.name} - ${Fmt.month(month)}'
+      ..amount = amount ?? slip.net
+      ..category = ExpenseCategory.salaries
+      ..customCategory = ''
+      ..date = date ?? DateTime.now();
+    upsert(expenses, exp);
+    return exp;
+  }
+
+  /// Pays every active employee not paid yet for [month]. Returns how many.
+  int payAllSalaries(DateTime month) {
+    var n = 0;
+    for (final slip in payroll(month)) {
+      if (slip.isPaid || !slip.employee.isActive || slip.net <= 0) continue;
+      paySalary(slip.employee, month);
+      n++;
+    }
+    return n;
+  }
+
+  /// Saves a bonus/deduction. An advance is cash paid out now, so it also
+  /// becomes an expense (and is later taken off the month's salary).
+  void saveAdjustment(SalaryAdjustment a) {
+    upsert(adjustments, a);
+    final linked = expenses.all.where((e) => e.adjustmentId == a.id).firstOrNull;
+    if (a.type == AdjustmentType.advance) {
+      final name = employee(a.employeeId)?.name ?? '';
+      final exp = linked ?? Expense(employeeId: a.employeeId, adjustmentId: a.id);
+      exp
+        ..title = 'سلفة $name${a.reason.isEmpty ? '' : ' - ${a.reason}'}'
+        ..amount = a.amount
+        ..category = ExpenseCategory.salaries
+        ..customCategory = ''
+        ..periodKey = a.periodKey
+        ..date = a.date;
+      upsert(expenses, exp);
+    } else if (linked != null) {
+      delete(expenses, linked.id);
+    }
+  }
+
+  void deleteAdjustment(SalaryAdjustment a) {
+    for (final e in expenses.all.where((e) => e.adjustmentId == a.id).toList()) {
+      delete(expenses, e.id);
+    }
+    delete(adjustments, a.id);
+  }
+
+  /// Removes the employee and their pending bonuses/deductions.
+  /// Money already paid (salaries, advances) stays in the expenses.
+  void deleteEmployee(Employee e) {
+    for (final a in adjustmentsOf(e.id)) {
+      if (a.type != AdjustmentType.advance) delete(adjustments, a.id);
+    }
+    delete(employees, e.id);
+  }
+
+  double get monthlySalaries => employees.all.where((e) => e.isActive).fold(0.0, (s, e) => s + e.salary);
+
+  // MARK: Fixed monthly expenses
+
+  List<FixedExpense> get sortedFixedExpenses => fixedExpenses.all
+    ..sort((a, b) {
+      if (a.isActive != b.isActive) return a.isActive ? -1 : 1;
+      return a.dueDay.compareTo(b.dueDay);
+    });
+
+  double get monthlyFixedTotal => fixedExpenses.all.where((f) => f.isActive).fold(0.0, (s, f) => s + f.amount);
+
+  Expense? fixedPayment(String fixedId, String periodKey) {
+    for (final e in expenses.all) {
+      if (e.fixedExpenseId == fixedId && e.periodKey == periodKey) return e;
+    }
+    return null;
+  }
+
+  /// Active fixed expenses not yet paid for [month].
+  List<FixedExpense> unpaidFixed(DateTime month) {
+    final key = Fmt.monthKey(month);
+    return sortedFixedExpenses.where((f) => f.isActive && fixedPayment(f.id, key) == null).toList();
+  }
+
+  Expense payFixed(FixedExpense f, DateTime month, {double? amount, DateTime? date}) {
+    final key = Fmt.monthKey(month);
+    final exp = fixedPayment(f.id, key) ?? Expense(fixedExpenseId: f.id, periodKey: key);
+    exp
+      ..title = '${f.title} - ${Fmt.month(month)}'
+      ..amount = amount ?? f.amount
+      ..category = f.category
+      ..customCategory = f.customCategory
+      ..date = date ?? DateTime.now();
+    upsert(expenses, exp);
+    return exp;
+  }
+
+  /// Records every unpaid fixed expense that has a set amount. Returns the count.
+  int payAllFixed(DateTime month) {
+    var n = 0;
+    for (final f in unpaidFixed(month)) {
+      if (f.amount <= 0 || f.variable) continue;
+      payFixed(f, month);
+      n++;
+    }
+    return n;
+  }
+
+  /// What leaves the business every month no matter what: salaries + fixed bills.
+  double get monthlyCommitments => monthlySalaries + monthlyFixedTotal;
+
   @override
   void dispose() {
     _saveTimer?.cancel();
@@ -438,4 +620,43 @@ class ClientAccount {
 
   double get profit => income - spent;
   double get margin => income > 0 ? profit / income * 100 : 0;
+}
+
+/// One employee's salary for one month.
+class Payslip {
+  Payslip({
+    required this.employee,
+    required this.periodKey,
+    required this.base,
+    required this.additions,
+    required this.deductions,
+    required this.advances,
+    required this.adjustments,
+    this.payment,
+  });
+
+  final Employee employee;
+  final String periodKey;
+  final double base;
+
+  /// Bonuses and overtime.
+  final double additions;
+
+  /// Deductions and absences.
+  final double deductions;
+
+  /// Advances already paid out during the month.
+  final double advances;
+  final List<SalaryAdjustment> adjustments;
+
+  /// The salary expense, once paid.
+  final Expense? payment;
+
+  bool get isPaid => payment != null;
+
+  /// What the employee earns for the month.
+  double get gross => base + additions - deductions;
+
+  /// What's left to hand over on pay day.
+  double get net => gross - advances;
 }

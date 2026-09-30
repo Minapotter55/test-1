@@ -8,6 +8,8 @@ import 'package:clientpro/ui/screens/customers_screen.dart';
 import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/deals_screen.dart';
 import 'package:clientpro/ui/screens/expenses_screen.dart';
+import 'package:clientpro/ui/screens/fixed_expenses_screen.dart';
+import 'package:clientpro/ui/screens/payroll_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
 import 'package:clientpro/ui/screens/products_screen.dart';
 import 'package:clientpro/ui/screens/reminders_screen.dart';
@@ -92,6 +94,12 @@ void main() {
     'customize fields': (st) => const CustomizeScreen(),
     'new customer form': (st) => const CustomerFormScreen(),
     'tasks': (st) => const TasksScreen(),
+    'payroll': (st) => const PayrollScreen(),
+    'employee detail': (st) => EmployeeDetailScreen(employeeId: st.employees.all.first.id, month: DateTime.now()),
+    'employee form': (st) => EmployeeFormScreen(employee: st.employees.all.first),
+    'new employee': (st) => const EmployeeFormScreen(),
+    'fixed expenses': (st) => const FixedExpensesScreen(),
+    'fixed expense form': (st) => FixedExpenseFormScreen(fixed: st.fixedExpenses.all.first),
   };
 
   for (final entry in screens.entries) {

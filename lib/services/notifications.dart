@@ -207,6 +207,46 @@ class NotificationService {
       }
     }
 
+    if (prefs.notifyBills) {
+      // Fixed bills and salaries for this month and the next one, so the
+      // reminders keep coming even if the app isn't opened for a while.
+      for (final offset in const [0, 1]) {
+        final month = DateTime(now.year, now.month + offset);
+        final key = Fmt.monthKey(month);
+        for (final f in store.fixedExpenses.all) {
+          if (!f.isActive || store.fixedPayment(f.id, key) != null) continue;
+          final amount = f.variable ? 'شوف الفاتورة وسجّلها' : Fmt.money(f.amount);
+          final due = DateTime(month.year, month.month, f.dueDay, 10);
+          final dayBefore = due.subtract(const Duration(days: 1));
+          if (dayBefore.isAfter(now)) {
+            oneOff.add(PlannedNotification(at: dayBefore, title: '🧾 ${f.title} بكرة', body: amount));
+          }
+          if (due.isAfter(now)) {
+            oneOff.add(PlannedNotification(at: due, title: '🧾 ميعاد دفع ${f.title} النهارده', body: amount));
+          }
+        }
+        final byDay = <int, List<Payslip>>{};
+        for (final slip in store.payroll(month)) {
+          if (slip.isPaid || !slip.employee.isActive) continue;
+          byDay.putIfAbsent(slip.employee.payDay, () => []).add(slip);
+        }
+        byDay.forEach((day, slips) {
+          final at = DateTime(month.year, month.month, day, 10);
+          if (!at.isAfter(now)) return;
+          final total = slips.fold(0.0, (s, p) => s + p.net);
+          oneOff.add(
+            PlannedNotification(
+              at: at,
+              title: '💰 ميعاد المرتبات النهارده',
+              body: slips.length == 1
+                  ? '${slips.first.employee.name} — ${Fmt.money(total)}'
+                  : '${slips.length} موظفين — ${Fmt.money(total)}',
+            ),
+          );
+        });
+      }
+    }
+
     if (prefs.notifyBirthdays) {
       for (final c in store.customers.all) {
         final b = c.birthday;

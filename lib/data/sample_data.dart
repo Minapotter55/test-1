@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../models/models.dart';
+import '../services/format.dart';
 import 'store.dart';
 
 /// Demo data so a new user (or a client you demo the app to) sees a full dashboard.
@@ -170,14 +171,70 @@ void loadSampleData(AppStore store) {
     );
   }
 
+  final team = [
+    Employee(name: 'أحمد سمير', jobTitle: 'مدير حسابات', phone: '01011112222', salary: 9000, payDay: 25),
+    Employee(name: 'نور الهدى', jobTitle: 'مصممة جرافيك', phone: '01233334444', salary: 7000, payDay: 25),
+    Employee(name: 'كريم عادل', jobTitle: 'مونتير ومصور', phone: '01155556666', salary: 6500, payDay: 25),
+    Employee(name: 'سارة محمود', jobTitle: 'كاتبة محتوى', phone: '01077778888', salary: 5500, payDay: 1),
+  ];
+  for (final e in team) {
+    e.hireDate = DateTime(now.year - 1, 3, 1);
+    store.upsert(store.employees, e);
+  }
+  final fixed = [
+    FixedExpense(title: 'إيجار المكتب', amount: 4000, category: ExpenseCategory.rent, dueDay: 1),
+    FixedExpense(title: 'كهرباء', amount: 450, category: ExpenseCategory.utilities, dueDay: 8, variable: true),
+    FixedExpense(title: 'مياه', amount: 80, category: ExpenseCategory.utilities, dueDay: 8, variable: true),
+    FixedExpense(title: 'إنترنت', amount: 550, category: ExpenseCategory.utilities, dueDay: 5),
+    FixedExpense(title: 'اشتراكات برامج', amount: 1200, category: ExpenseCategory.software, dueDay: 3),
+    FixedExpense(title: 'تأمينات اجتماعية', amount: 1800, category: ExpenseCategory.taxes, dueDay: 15),
+  ];
+  for (final f in fixed) {
+    store.upsert(store.fixedExpenses, f);
+  }
+
+  // This month's adjustments.
+  final thisMonth = Fmt.monthKey(now);
+  for (final a in [
+    SalaryAdjustment(
+      employeeId: team[0].id,
+      type: AdjustmentType.bonus,
+      amount: 1000,
+      periodKey: thisMonth,
+      reason: 'تارجت التحصيل',
+    ),
+    SalaryAdjustment(
+      employeeId: team[2].id,
+      type: AdjustmentType.absence,
+      amount: 217,
+      periodKey: thisMonth,
+      reason: 'يوم غياب',
+    ),
+    SalaryAdjustment(
+      employeeId: team[1].id,
+      type: AdjustmentType.advance,
+      amount: 1500,
+      periodKey: thisMonth,
+      date: DateTime(now.year, now.month, 1),
+    ),
+  ]) {
+    store.saveAdjustment(a);
+  }
+
   for (var m = 0; m < 6; m++) {
     final start = DateTime(now.year, now.month - m);
-    final items = [
-      ('إيجار المكتب', 4000.0, ExpenseCategory.rent, 1),
-      ('رواتب', 9000.0, ExpenseCategory.salaries, 25),
-      ('إعلانات فيسبوك', 1500.0 + m * 200, ExpenseCategory.marketing, 10),
-      ('إنترنت وكهرباء', 650.0, ExpenseCategory.utilities, 5),
-    ];
+    for (final f in fixed) {
+      final date = DateTime(start.year, start.month, f.dueDay);
+      if (date.isAfter(now)) continue;
+      final amount = f.variable ? f.amount + (m * 37 % 90) : f.amount;
+      store.payFixed(f, start, amount: amount, date: date);
+    }
+    for (final e in team) {
+      final date = DateTime(start.year, start.month, e.payDay);
+      if (date.isAfter(now)) continue;
+      store.paySalary(e, start, date: date);
+    }
+    final items = [('إعلانات فيسبوك', 1500.0 + m * 200, ExpenseCategory.marketing, 10)];
     for (final e in items) {
       final date = DateTime(start.year, start.month, e.$4);
       if (date.isAfter(now)) continue;

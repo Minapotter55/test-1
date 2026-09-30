@@ -2,8 +2,11 @@ import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
 import 'package:clientpro/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
+  setUpAll(() => initializeDateFormatting('ar'));
+
   group('Invoice math', () {
     test('totals, tax, discount, balance and status', () {
       final inv = Invoice(

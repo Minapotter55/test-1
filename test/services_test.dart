@@ -117,8 +117,9 @@ void main() {
     expect(excel.tables['العملاء']!.maxRows, store.customers.items.length + 1);
 
     final start = DateTime(now.year, now.month);
+    final end = DateTime(now.year, now.month + 1);
     final expected = store.allPayments
-        .where((p) => !p.$1.date.isBefore(start))
+        .where((p) => !p.$1.date.isBefore(start) && p.$1.date.isBefore(end))
         .fold<double>(0, (s, p) => s + p.$1.amount);
     final revenueRow = excel.tables['الملخص']!.rows.firstWhere((r) => r.first?.value.toString() == 'المحصّل (مدفوعات)');
     final cell = revenueRow[1]!.value;

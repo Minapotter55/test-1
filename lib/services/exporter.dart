@@ -82,6 +82,14 @@ class Exporter {
       [t('المبيعات (فواتير صادرة)'), n(sales)],
       [t('عدد الفواتير'), n(invoices.length)],
       [t('المصروفات'), n(spent)],
+      [
+        t('  منها مرتبات'),
+        n(expenses.where((e) => e.category == ExpenseCategory.salaries).fold<double>(0, (s, e) => s + e.amount)),
+      ],
+      [
+        t('  منها مصاريف ثابتة'),
+        n(expenses.where((e) => e.fixedExpenseId != null).fold<double>(0, (s, e) => s + e.amount)),
+      ],
       [t('صافي الربح'), n(revenue - spent)],
       [t('إجمالي المستحقات الحالية'), n(outstanding)],
       [t('عملاء جدد'), n(newCustomers)],
@@ -162,6 +170,65 @@ class Exporter {
         n(double.parse(a.margin.toStringAsFixed(1))),
         n(a.balance),
       ]);
+    }
+
+    final slips = store.payroll(start);
+    if (slips.isNotEmpty) {
+      final payroll = sheet('المرتبات', [
+        'الموظف',
+        'الوظيفة',
+        'الأساسي',
+        'مكافآت وإضافي',
+        'خصومات وغياب',
+        'المستحق',
+        'سلف',
+        'الصافي',
+        'اتصرف',
+        'تاريخ الصرف',
+        'تفاصيل',
+      ]);
+      for (final p in slips) {
+        payroll.appendRow([
+          t(p.employee.name),
+          t(p.employee.jobTitle),
+          n(p.base),
+          n(p.additions),
+          n(p.deductions),
+          n(p.gross),
+          n(p.advances),
+          n(p.isPaid ? p.payment!.amount : p.net),
+          t(p.isPaid ? 'نعم' : 'لا'),
+          d(p.payment?.date),
+          t(
+            p.adjustments
+                .map((a) => '${a.type.label} ${Fmt.input(a.amount)}${a.reason.isEmpty ? '' : ' (${a.reason})'}')
+                .join('، '),
+          ),
+        ]);
+      }
+    }
+
+    if (store.fixedExpenses.items.isNotEmpty) {
+      final key = Fmt.monthKey(start);
+      final fixed = sheet('المصاريف الثابتة', [
+        'البند',
+        'النوع',
+        'يوم الدفع',
+        'المبلغ المعتاد',
+        'اتدفع',
+        'تاريخ الدفع',
+      ]);
+      for (final f in store.sortedFixedExpenses.where((f) => f.isActive || store.fixedPayment(f.id, key) != null)) {
+        final paid = store.fixedPayment(f.id, key);
+        fixed.appendRow([
+          t(f.title),
+          t(f.categoryLabel),
+          n(f.dueDay),
+          n(f.amount),
+          paid == null ? t('لم يُدفع') : n(paid.amount),
+          d(paid?.date),
+        ]);
+      }
     }
 
     final cust = sheet('العملاء', [

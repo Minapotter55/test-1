@@ -82,6 +82,13 @@ class RemindersScreen extends StatelessWidget {
             onChanged: (v) => prefs.notifyInvoices = v,
           ),
           SwitchListTile(
+            secondary: const Icon(Icons.event_repeat),
+            title: const Text('المصاريف الثابتة والمرتبات'),
+            subtitle: const Text('الإيجار والكهرباء وغيرها قبلها بيوم ويوم الميعاد، ويوم قبض الموظفين'),
+            value: prefs.notifyBills,
+            onChanged: (v) => prefs.notifyBills = v,
+          ),
+          SwitchListTile(
             secondary: const Icon(Icons.cake),
             title: const Text('أعياد ميلاد العملاء'),
             value: prefs.notifyBirthdays,

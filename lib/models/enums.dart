@@ -114,6 +114,8 @@ enum ExpenseCategory {
   transport('مواصلات', Icons.local_shipping, Colors.teal),
   utilities('كهرباء ومياه وإنترنت', Icons.bolt, Colors.amber),
   software('برامج واشتراكات', Icons.apps, Colors.indigo),
+  maintenance('صيانة ونظافة', Icons.build, Colors.blueGrey),
+  taxes('ضرائب وتأمينات', Icons.account_balance, Colors.deepPurple),
   other('أخرى', Icons.more_horiz, Colors.grey);
 
   const ExpenseCategory(this.label, this.icon, this.color);
@@ -141,4 +143,21 @@ enum FeeCycle {
 
   const FeeCycle(this.label);
   final String label;
+}
+
+/// Changes to an employee's salary for a given month.
+enum AdjustmentType {
+  bonus('مكافأة / حافز', Icons.add_circle, Colors.green, 1),
+  overtime('إضافي', Icons.more_time, Colors.teal, 1),
+  deduction('خصم', Icons.remove_circle, Colors.red, -1),
+  absence('غياب', Icons.event_busy, Colors.orange, -1),
+  advance('سلفة', Icons.payments, Colors.purple, -1);
+
+  const AdjustmentType(this.label, this.icon, this.color, this.sign);
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  /// +1 adds to the salary, -1 is taken off it.
+  final int sign;
 }

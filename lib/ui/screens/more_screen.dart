@@ -10,6 +10,8 @@ import 'customize_screen.dart';
 import 'deals_screen.dart';
 import 'invoices_screen.dart';
 import 'expenses_screen.dart';
+import 'fixed_expenses_screen.dart';
+import 'payroll_screen.dart';
 import 'products_screen.dart';
 import 'reminders_screen.dart';
 import 'reports_screen.dart';
@@ -25,6 +27,8 @@ class MoreScreen extends StatelessWidget {
     final sync = context.watch<DriveSync>();
     final openDeals = store.deals.all.where((d) => d.stage.isOpen).length;
     final lowStock = store.products.all.where((p) => p.isLowStock).length;
+    final today = DateTime.now();
+    final unpaidFixed = store.unpaidFixed(today).where((f) => f.dueDay <= today.day).length;
 
     Widget link(String title, IconData icon, Color color, Widget Function() page, {String? badge, String? subtitle}) =>
         ListTile(
@@ -80,6 +84,27 @@ class MoreScreen extends StatelessWidget {
           link('الفواتير', Icons.receipt_long, Colors.blue, () => const InvoicesScreen()),
           link('المصروفات', Icons.money_off, Colors.red, () => const ExpensesScreen()),
           link('التقارير', Icons.pie_chart, Colors.green, () => const ReportsScreen()),
+          const _Header('المصاريف الثابتة والموظفين'),
+          link(
+            'الموظفين والمرتبات',
+            Icons.badge,
+            Colors.indigo,
+            () => const PayrollScreen(),
+            subtitle: store.employees.items.isEmpty
+                ? 'المرتبات والخصومات والمكافآت والسلف'
+                : '${Fmt.number(store.employees.all.where((e) => e.isActive).length)} موظف • '
+                      '${Fmt.money(store.monthlySalaries)} شهرياً',
+          ),
+          link(
+            'المصاريف الثابتة',
+            Icons.event_repeat,
+            Colors.brown,
+            () => const FixedExpensesScreen(),
+            subtitle: store.fixedExpenses.items.isEmpty
+                ? 'إيجار، كهرباء، مياه، إنترنت، اشتراكات...'
+                : '${Fmt.money(store.monthlyFixedTotal)} شهرياً',
+            badge: unpaidFixed > 0 ? Fmt.number(unpaidFixed) : null,
+          ),
           const _Header('البيانات والتنبيهات'),
           link(
             'تخصيص الخانات',
