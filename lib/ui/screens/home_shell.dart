@@ -9,6 +9,7 @@ import '../../services/notifications.dart';
 import 'customers_screen.dart';
 import 'dashboard_screen.dart';
 import 'client_accounts_screen.dart';
+import 'commitments_screen.dart';
 import 'more_screen.dart';
 import 'tasks_screen.dart';
 
@@ -27,8 +28,11 @@ class _HomeShellState extends State<HomeShell> {
     final prefs = context.watch<DevicePrefs>();
     if (!prefs.onboarded) return const OnboardingScreen();
 
-    final tasks = context.watch<AppStore>().tasks.all;
-    final dueTasks = tasks.where((t) => !t.isDone && (t.isOverdue || t.isDueToday)).length;
+    final store = context.watch<AppStore>();
+    final dueTasks = store.tasks.all.where((t) => !t.isDone && (t.isOverdue || t.isDueToday)).length;
+    final follow = store.followUp(DateTime.now());
+    final lateCommitments =
+        follow.unpaidBills.length + follow.unpaidSalaries.length + follow.iOwe.where((d) => d.isOverdue).length;
 
     return Scaffold(
       body: IndexedStack(
@@ -37,6 +41,7 @@ class _HomeShellState extends State<HomeShell> {
           DashboardScreen(onOpenTab: (i) => setState(() => _index = i)),
           const CustomersScreen(),
           const ClientAccountsScreen(),
+          const CommitmentsScreen(),
           const TasksScreen(),
           const MoreScreen(),
         ],
@@ -59,6 +64,15 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'الحسابات',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: lateCommitments > 0,
+              label: Text(Fmt.number(lateCommitments)),
+              child: const Icon(Icons.fact_check_outlined),
+            ),
+            selectedIcon: const Icon(Icons.fact_check),
+            label: 'الالتزامات',
           ),
           NavigationDestination(
             icon: Badge(

@@ -93,6 +93,51 @@ void main() {
       expect(plan.every((p) => p.at.isAfter(now)), isTrue);
     });
 
+    test('follow-up digest lists unpaid bills, salaries and who owes whom; debts get due reminders', () {
+      prefs
+        ..dailyAgenda = false
+        ..monthlyExportReminder = false
+        ..notifyBills = false
+        ..followUpEveryDays = 3
+        ..followUpTime = 19 * 60;
+      final now = DateTime(2026, 9, 3, 12);
+      final store = AppStore(persist: false);
+      store.upsert(store.fixedExpenses, FixedExpense(title: 'الإيجار', amount: 4000, dueDay: 1));
+      store.upsert(store.employees, Employee(name: 'كريم', salary: 5000, payDay: 5));
+      store.upsert(
+        store.debts,
+        Debt(person: 'محمد', amount: 2000, direction: DebtDirection.owedToMe, dueDate: DateTime(2026, 9, 10)),
+      );
+      store.upsert(store.debts, Debt(person: 'المطبعة', amount: 700, direction: DebtDirection.iOwe));
+
+      final plan = NotificationService.buildPlan(store, prefs, now);
+      final digests = plan.where((p) => p.title.startsWith('📋')).toList();
+      expect(digests.first.at, DateTime(2026, 9, 3, 19));
+      expect(digests[1].at, DateTime(2026, 9, 6, 19));
+      expect(digests.first.body, contains('الإيجار'));
+      expect(digests.first.body, isNot(contains('كريم')), reason: 'pay day (5th) not reached yet');
+      expect(digests[1].body, contains('كريم'));
+      expect(digests.first.body, contains('محمد'));
+      expect(digests.first.body, contains('المطبعة'));
+
+      final debtReminders = plan.where((p) => p.title.contains('محمد')).toList();
+      expect(debtReminders.map((p) => p.at), [
+        DateTime(2026, 9, 10, 11),
+        DateTime(2026, 9, 17, 11),
+        DateTime(2026, 9, 24, 11),
+        DateTime(2026, 10, 1, 11),
+      ]);
+
+      // Once everything is paid, the digest has nothing to say.
+      store.payFixed(store.fixedExpenses.all.first, now);
+      store.paySalary(store.employees.all.first, now);
+      for (final d in store.debts.all) {
+        store.addDebtPayment(d, d.amount);
+      }
+      final after = NotificationService.buildPlan(store, prefs, now);
+      expect(after.where((p) => p.title.startsWith('📋') || p.title.contains('محمد')), isEmpty);
+    });
+
     test('respects switches', () {
       prefs
         ..dailyAgenda = false

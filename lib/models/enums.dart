@@ -145,6 +145,18 @@ enum FeeCycle {
   final String label;
 }
 
+/// Who owes whom in a [Debt].
+enum DebtDirection {
+  owedToMe('ليّا فلوس عنده', 'ليك', Icons.call_received, Colors.green),
+  iOwe('عليّا فلوس له', 'عليك', Icons.call_made, Colors.red);
+
+  const DebtDirection(this.label, this.short, this.icon, this.color);
+  final String label;
+  final String short;
+  final IconData icon;
+  final Color color;
+}
+
 /// Changes to an employee's salary for a given month.
 enum AdjustmentType {
   bonus('مكافأة / حافز', Icons.add_circle, Colors.green, 1),

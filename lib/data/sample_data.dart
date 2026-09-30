@@ -193,6 +193,37 @@ void loadSampleData(AppStore store) {
     store.upsert(store.fixedExpenses, f);
   }
 
+  for (final d in [
+    Debt(
+      person: 'مصور فريلانس - مينا',
+      phone: '01099990000',
+      direction: DebtDirection.iOwe,
+      amount: 3000,
+      reason: 'باقي حساب تصوير حملة الأسنان',
+      date: daysAgo(10),
+      dueDate: daysAhead(5),
+      payments: [Payment(amount: 1000, date: daysAgo(10))],
+    ),
+    Debt(
+      person: 'محمد (صديق)',
+      direction: DebtDirection.owedToMe,
+      amount: 2000,
+      reason: 'سلفة',
+      date: daysAgo(20),
+      dueDate: daysAgo(2),
+    ),
+    Debt(
+      person: 'مطبعة النور',
+      direction: DebtDirection.iOwe,
+      amount: 1500,
+      reason: 'بروشورات',
+      date: daysAgo(40),
+      payments: [Payment(amount: 1500, date: daysAgo(30))],
+    ),
+  ]) {
+    store.upsert(store.debts, d);
+  }
+
   // This month's adjustments.
   final thisMonth = Fmt.monthKey(now);
   for (final a in [

@@ -8,6 +8,13 @@ import '../../services/notifications.dart';
 import '../widgets.dart';
 import 'tasks_screen.dart';
 
+String _everyLabel(int days) => switch (days) {
+  1 => 'كل يوم',
+  2 => 'كل يومين',
+  7 => 'كل أسبوع',
+  _ => 'كل ${Fmt.number(days)} أيام',
+};
+
 class RemindersScreen extends StatelessWidget {
   const RemindersScreen({super.key});
 
@@ -18,6 +25,8 @@ class RemindersScreen extends StatelessWidget {
     final upcoming = NotificationService.buildPlan(store, prefs, DateTime.now()).take(15).toList();
     final agenda = prefs.dailyAgendaTime;
     final agendaTime = TimeOfDay(hour: agenda ~/ 60, minute: agenda % 60);
+    final follow = prefs.followUpTime;
+    final followTime = TimeOfDay(hour: follow ~/ 60, minute: follow % 60);
 
     return Scaffold(
       appBar: AppBar(title: const Text('التذكيرات والإشعارات')),
@@ -80,6 +89,47 @@ class RemindersScreen extends StatelessWidget {
             ),
             value: prefs.notifyInvoices,
             onChanged: (v) => prefs.notifyInvoices = v,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.fact_check),
+            title: const Text('متابعة دورية: مين اخد ومين عليه فلوس'),
+            subtitle: Text(
+              'إشعار ${_everyLabel(prefs.followUpEveryDays)} الساعة ${Fmt.digits(followTime.format(context))}: '
+              'الالتزامات اللي ما اتدفعتش، الموظفين اللي ما اخدوش، واللي ليك واللي عليك',
+            ),
+            value: prefs.followUpDigest,
+            onChanged: (v) => prefs.followUpDigest = v,
+          ),
+          if (prefs.followUpDigest)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 56, end: 12),
+              child: Wrap(
+                spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final d in const [1, 2, 3, 7])
+                    ChoiceChip(
+                      label: Text(_everyLabel(d)),
+                      selected: prefs.followUpEveryDays == d,
+                      onSelected: (_) => prefs.followUpEveryDays = d,
+                    ),
+                  ActionChip(
+                    avatar: const Icon(Icons.schedule, size: 16),
+                    label: Text(Fmt.digits(followTime.format(context))),
+                    onPressed: () async {
+                      final t = await showTimePicker(context: context, initialTime: followTime);
+                      if (t != null) prefs.followUpTime = t.hour * 60 + t.minute;
+                    },
+                  ),
+                ],
+              ),
+            ),
+          SwitchListTile(
+            secondary: const Icon(Icons.handshake_outlined),
+            title: const Text('مواعيد الديون (ليك وعليك)'),
+            subtitle: const Text('يوم الميعاد، وبعدها كل أسبوع لحد ما تتقفل'),
+            value: prefs.notifyDebts,
+            onChanged: (v) => prefs.notifyDebts = v,
           ),
           SwitchListTile(
             secondary: const Icon(Icons.event_repeat),

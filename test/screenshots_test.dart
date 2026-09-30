@@ -12,6 +12,7 @@ import 'package:clientpro/data/prefs.dart';
 import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
 import 'package:clientpro/ui/screens/client_accounts_screen.dart';
+import 'package:clientpro/ui/screens/commitments_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
 import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/fixed_expenses_screen.dart';
@@ -53,6 +54,8 @@ void main() {
     '9-payroll': (s) => const PayrollScreen(),
     '10-employee': (s) => EmployeeDetailScreen(employeeId: s.sortedEmployees.first.id, month: DateTime.now()),
     '11-fixed-expenses': (s) => const FixedExpensesScreen(),
+    '12-commitments': (s) => const CommitmentsScreen(),
+    '13-debt': (s) => DebtDetailScreen(id: s.debts.all.firstWhere((d) => !d.isSettled && d.paid > 0).id),
   };
 
   for (final entry in pages.entries) {

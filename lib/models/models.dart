@@ -756,6 +756,71 @@ class SalaryAdjustment extends Entity {
   );
 }
 
+/// Money someone owes me, or that I owe someone (supplier, freelancer,
+/// landlord, a friend...), settled with one or more payments.
+class Debt extends Entity {
+  Debt({
+    super.id,
+    super.updatedAt,
+    this.person = '',
+    this.phone = '',
+    this.direction = DebtDirection.owedToMe,
+    this.amount = 0,
+    DateTime? date,
+    this.dueDate,
+    this.reason = '',
+    List<Payment>? payments,
+  }) : date = date ?? DateTime.now(),
+       payments = payments ?? [];
+
+  String person, phone, reason;
+  DebtDirection direction;
+  double amount;
+  DateTime date;
+  DateTime? dueDate;
+  List<Payment> payments;
+
+  double get paid => payments.fold(0.0, (s, p) => s + p.amount);
+  double get remaining => (amount - paid).clamp(0, double.infinity).toDouble();
+  bool get isSettled => remaining < 0.01;
+  bool get isOverdue {
+    final due = dueDate;
+    if (due == null || isSettled) return false;
+    final now = DateTime.now();
+    return DateTime(due.year, due.month, due.day).isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'u': updatedAt,
+    'person': person,
+    'phone': phone,
+    'dir': direction.name,
+    'amount': amount,
+    'date': _ms(date),
+    'due': _ms(dueDate),
+    'reason': reason,
+    'payments': payments.map((p) => p.toJson()).toList(),
+  };
+
+  factory Debt.fromJson(Map<String, dynamic> j) => Debt(
+    id: j['id'] as String?,
+    updatedAt: j['u'] as int?,
+    person: _str(j['person']),
+    phone: _str(j['phone']),
+    direction: enumByName(DebtDirection.values, j['dir'], DebtDirection.owedToMe),
+    amount: _double(j['amount']),
+    date: _date(j['date']),
+    dueDate: _date(j['due']),
+    reason: _str(j['reason']),
+    payments: (j['payments'] as List?)
+        ?.whereType<Map>()
+        .map((m) => Payment.fromJson(Map<String, dynamic>.from(m)))
+        .toList(),
+  );
+}
+
 /// A bill that comes every month: rent, water, electricity, internet...
 class FixedExpense extends Entity {
   FixedExpense({

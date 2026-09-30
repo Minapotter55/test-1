@@ -76,6 +76,7 @@ class AppStore extends ChangeNotifier {
   final employees = Collection<Employee>('employees', Employee.fromJson);
   final adjustments = Collection<SalaryAdjustment>('adjustments', SalaryAdjustment.fromJson);
   final fixedExpenses = Collection<FixedExpense>('fixedExpenses', FixedExpense.fromJson);
+  final debts = Collection<Debt>('debts', Debt.fromJson);
 
   late final List<Collection> _collections = [
     customers,
@@ -88,6 +89,7 @@ class AppStore extends ChangeNotifier {
     employees,
     adjustments,
     fixedExpenses,
+    debts,
   ];
 
   BusinessSettings business = BusinessSettings();
@@ -587,6 +589,57 @@ class AppStore extends ChangeNotifier {
   /// What leaves the business every month no matter what: salaries + fixed bills.
   double get monthlyCommitments => monthlySalaries + monthlyFixedTotal;
 
+  // MARK: Debts & follow-up
+
+  /// Open debts in one direction, overdue / soonest due first.
+  List<Debt> openDebts(DebtDirection direction) =>
+      debts.all.where((d) => d.direction == direction && !d.isSettled).toList()..sort((a, b) {
+        final ad = a.dueDate, bd = b.dueDate;
+        if (ad == null && bd == null) return b.date.compareTo(a.date);
+        if (ad == null) return 1;
+        if (bd == null) return -1;
+        return ad.compareTo(bd);
+      });
+
+  List<Debt> settledDebts() => debts.all.where((d) => d.isSettled).toList()..sort((a, b) => b.date.compareTo(a.date));
+
+  void addDebtPayment(Debt d, double amount, {DateTime? date, String note = ''}) {
+    d.payments.add(Payment(amount: amount, date: date, note: note));
+    upsert(debts, d);
+  }
+
+  /// Clients who still owe money on issued invoices, biggest first.
+  List<(Customer, double)> clientsWhoOwe() {
+    final list = <(Customer, double)>[
+      for (final c in customers.all)
+        if (balanceOf(c.id) case final b when b > 0.009) (c, b),
+    ];
+    list.sort((a, b) => b.$2.compareTo(a.$2));
+    return list;
+  }
+
+  /// Everything that needs following up as of [at]: bills and salaries due
+  /// (in [at]'s month, up to that day) that aren't paid, money people owe
+  /// me and money I owe.
+  FollowUp followUp(DateTime at) {
+    final key = Fmt.monthKey(at);
+    final month = DateTime(at.year, at.month);
+    return FollowUp(
+      at: at,
+      unpaidBills: [
+        for (final f in sortedFixedExpenses)
+          if (f.isActive && f.dueDay <= at.day && fixedPayment(f.id, key) == null) f,
+      ],
+      unpaidSalaries: [
+        for (final p in payroll(month))
+          if (p.employee.isActive && !p.isPaid && p.employee.payDay <= at.day && p.net > 0) p,
+      ],
+      clientsOwe: clientsWhoOwe(),
+      owedToMe: openDebts(DebtDirection.owedToMe),
+      iOwe: openDebts(DebtDirection.iOwe),
+    );
+  }
+
   @override
   void dispose() {
     _saveTimer?.cancel();
@@ -620,6 +673,60 @@ class ClientAccount {
 
   double get profit => income - spent;
   double get margin => income > 0 ? profit / income * 100 : 0;
+}
+
+/// Snapshot of what's unpaid and who owes whom, used by the commitments
+/// screen and the periodic follow-up notification.
+class FollowUp {
+  FollowUp({
+    required this.at,
+    required this.unpaidBills,
+    required this.unpaidSalaries,
+    required this.clientsOwe,
+    required this.owedToMe,
+    required this.iOwe,
+  });
+
+  final DateTime at;
+  final List<FixedExpense> unpaidBills;
+  final List<Payslip> unpaidSalaries;
+  final List<(Customer, double)> clientsOwe;
+  final List<Debt> owedToMe;
+  final List<Debt> iOwe;
+
+  double get billsTotal => unpaidBills.fold(0.0, (s, f) => s + f.amount);
+  double get salariesTotal => unpaidSalaries.fold(0.0, (s, p) => s + p.net);
+
+  /// Money others owe me: client invoices + personal debts.
+  double get owedToMeTotal => clientsOwe.fold(0.0, (s, c) => s + c.$2) + owedToMe.fold(0.0, (s, d) => s + d.remaining);
+  int get owedToMeCount => clientsOwe.length + owedToMe.length;
+
+  double get iOweTotal => iOwe.fold(0.0, (s, d) => s + d.remaining);
+
+  /// What I still have to pay: bills, salaries and my debts.
+  double get toPayTotal => billsTotal + salariesTotal + iOweTotal;
+
+  bool get isEmpty =>
+      unpaidBills.isEmpty && unpaidSalaries.isEmpty && clientsOwe.isEmpty && owedToMe.isEmpty && iOwe.isEmpty;
+
+  /// Short multi-line text for a notification.
+  String summary() {
+    String names(Iterable<String> all) {
+      final list = all.toList();
+      final shown = list.take(3).join('، ');
+      return list.length > 3 ? '$shown و${list.length - 3} كمان' : shown;
+    }
+
+    return [
+      if (unpaidBills.isNotEmpty) '🧾 لسه ما اتدفعش: ${names(unpaidBills.map((f) => f.title))}',
+      if (unpaidSalaries.isNotEmpty)
+        '👥 لسه ما اخدش مرتبه: ${names(unpaidSalaries.map((p) => p.employee.name))} (${Fmt.money(salariesTotal)})',
+      if (owedToMeCount > 0)
+        '💵 ليك ${Fmt.money(owedToMeTotal)} عند: '
+            '${names([...clientsOwe.map((c) => c.$1.name), ...owedToMe.map((d) => d.person)])}',
+      if (iOwe.isNotEmpty) '💸 عليك ${Fmt.money(iOweTotal)} لـ: ${names(iOwe.map((d) => d.person))}',
+    ].join('\n');
+  }
 }
 
 /// One employee's salary for one month.

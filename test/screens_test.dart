@@ -3,7 +3,9 @@ import 'package:clientpro/app_services.dart';
 import 'package:clientpro/data/prefs.dart';
 import 'package:clientpro/data/sample_data.dart';
 import 'package:clientpro/data/store.dart';
+import 'package:clientpro/models/models.dart';
 import 'package:clientpro/ui/screens/client_accounts_screen.dart';
+import 'package:clientpro/ui/screens/commitments_screen.dart';
 import 'package:clientpro/ui/screens/customers_screen.dart';
 import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/deals_screen.dart';
@@ -94,6 +96,10 @@ void main() {
     'customize fields': (st) => const CustomizeScreen(),
     'new customer form': (st) => const CustomerFormScreen(),
     'tasks': (st) => const TasksScreen(),
+    'commitments': (st) => const CommitmentsScreen(),
+    'debt detail': (st) => DebtDetailScreen(id: st.debts.all.first.id),
+    'debt form': (st) => DebtFormScreen(debt: st.debts.all.first),
+    'new debt': (st) => const DebtFormScreen(direction: DebtDirection.iOwe),
     'payroll': (st) => const PayrollScreen(),
     'employee detail': (st) => EmployeeDetailScreen(employeeId: st.employees.all.first.id, month: DateTime.now()),
     'employee form': (st) => EmployeeFormScreen(employee: st.employees.all.first),

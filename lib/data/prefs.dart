@@ -64,6 +64,21 @@ class DevicePrefs extends ChangeNotifier {
   bool get notifyInvoices => _b('notifyInvoices', true);
   set notifyInvoices(bool v) => _set('notifyInvoices', v);
 
+  /// Periodic "who paid / who owes" follow-up notification.
+  bool get followUpDigest => _b('followUpDigest', true);
+  set followUpDigest(bool v) => _set('followUpDigest', v);
+
+  /// Every how many days the follow-up comes (1, 2, 3 or 7).
+  int get followUpEveryDays => _i('followUpEveryDays', 3).clamp(1, 30);
+  set followUpEveryDays(int v) => _set('followUpEveryDays', v);
+
+  /// Minutes after midnight.
+  int get followUpTime => _i('followUpTime', 19 * 60);
+  set followUpTime(int v) => _set('followUpTime', v);
+
+  bool get notifyDebts => _b('notifyDebts', true);
+  set notifyDebts(bool v) => _set('notifyDebts', v);
+
   bool get notifyBills => _b('notifyBills', true);
   set notifyBills(bool v) => _set('notifyBills', v);
 

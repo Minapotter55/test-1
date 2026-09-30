@@ -208,6 +208,41 @@ void main() {
     expect(s.expenses.items.length, 2);
   });
 
+  test('debts: partial payments, settle, follow-up totals and sync', () {
+    final s = AppStore(persist: false);
+    final c = Customer(name: 'عيادة');
+    s.upsert(s.customers, c);
+    s.upsert(
+      s.invoices,
+      Invoice(
+        customerId: c.id,
+        items: [InvoiceItem(name: 'x', quantity: 1, unitPrice: 5000)],
+      ),
+    );
+    final lent = Debt(person: 'محمد', amount: 2000, direction: DebtDirection.owedToMe);
+    final owe = Debt(person: 'مصور', amount: 3000, direction: DebtDirection.iOwe);
+    s.upsert(s.debts, lent);
+    s.upsert(s.debts, owe);
+
+    s.addDebtPayment(owe, 1000);
+    expect((owe.paid, owe.remaining, owe.isSettled), (1000.0, 2000.0, false));
+
+    final f = s.followUp(DateTime.now());
+    expect(f.owedToMeTotal, 7000, reason: 'client invoice 5000 + personal 2000');
+    expect(f.owedToMeCount, 2);
+    expect(f.iOweTotal, 2000);
+    expect(f.summary(), allOf(contains('عيادة'), contains('محمد'), contains('مصور')));
+
+    s.addDebtPayment(owe, 2000);
+    expect(owe.isSettled, isTrue);
+    expect(s.openDebts(DebtDirection.iOwe), isEmpty);
+    expect(s.settledDebts().single.person, 'مصور');
+
+    final copy = AppStore(persist: false)..replaceWith(s.snapshot());
+    final o2 = copy.debts.items[owe.id]!;
+    expect((o2.direction, o2.amount, o2.payments.length, o2.isSettled), (DebtDirection.iOwe, 3000.0, 2, true));
+  });
+
   test('employees, adjustments and fixed expenses survive sync JSON', () {
     final s = AppStore(persist: false);
     final e = Employee(

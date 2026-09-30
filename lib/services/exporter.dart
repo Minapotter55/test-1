@@ -231,6 +231,23 @@ class Exporter {
       }
     }
 
+    if (store.debts.items.isNotEmpty) {
+      final debts = sheet('ليك وعليك', ['الاسم', 'النوع', 'السبب', 'التاريخ', 'الميعاد', 'المبلغ', 'اتدفع', 'الباقي']);
+      for (final x in store.debts.all..sort((a, b) => a.date.compareTo(b.date))) {
+        if (x.isSettled && !inMonth(x.payments.isEmpty ? x.date : x.payments.last.date)) continue;
+        debts.appendRow([
+          t(x.person),
+          t(x.direction.label),
+          t(x.reason),
+          d(x.date),
+          d(x.dueDate),
+          n(x.amount),
+          n(x.paid),
+          n(x.remaining),
+        ]);
+      }
+    }
+
     final cust = sheet('العملاء', [
       'الاسم',
       'الشركة',

@@ -190,9 +190,11 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
           ),
-          if (store.employees.items.isNotEmpty || store.fixedExpenses.items.isNotEmpty) ...[
+          if (store.employees.items.isNotEmpty ||
+              store.fixedExpenses.items.isNotEmpty ||
+              store.debts.items.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _CommitmentsCard(store: store, now: now),
+            _CommitmentsCard(store: store, now: now, onOpen: () => onOpenTab(3)),
           ],
           if (target > 0) ...[
             const SizedBox(height: 12),
@@ -255,7 +257,7 @@ class DashboardScreen extends StatelessWidget {
             SectionCard(
               title: 'مهام تحتاج انتباهك',
               icon: Icons.notifications_active,
-              trailing: TextButton(onPressed: () => onOpenTab(3), child: const Text('الكل')),
+              trailing: TextButton(onPressed: () => onOpenTab(4), child: const Text('الكل')),
               child: Column(children: [for (final t in focusTasks.take(5)) TaskTile(task: t, dense: true)]),
             ),
           ],
@@ -303,12 +305,14 @@ class DashboardScreen extends StatelessWidget {
 
 /// Salaries and fixed bills for this month: what's paid and what's coming.
 class _CommitmentsCard extends StatelessWidget {
-  const _CommitmentsCard({required this.store, required this.now});
+  const _CommitmentsCard({required this.store, required this.now, required this.onOpen});
   final AppStore store;
   final DateTime now;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final follow = store.followUp(now);
     final slips = store.payroll(now).where((p) => p.employee.isActive).toList();
     final salaryTotal = slips.fold(0.0, (s, p) => s + p.gross);
     final salaryLeft = slips.where((p) => !p.isPaid).fold(0.0, (s, p) => s + p.net);
@@ -384,10 +388,49 @@ class _CommitmentsCard extends StatelessWidget {
               trailing: Text(f.variable ? 'متغير' : Fmt.money(f.amount)),
               onTap: () => open(const FixedExpensesScreen()),
             ),
+          if (follow.owedToMe.isNotEmpty || follow.iOwe.isNotEmpty) ...[
+            const Divider(),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniTotal(
+                    label: 'ليك عند الناس',
+                    value: follow.owedToMe.fold(0.0, (s, d) => s + d.remaining),
+                    color: Colors.green,
+                  ),
+                ),
+                Expanded(
+                  child: _MiniTotal(label: 'عليك للناس', value: follow.iOweTotal, color: Colors.red),
+                ),
+              ],
+            ),
+          ],
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton(onPressed: onOpen, child: const Text('المتابعة كاملة')),
+          ),
         ],
       ),
     );
   }
+}
+
+class _MiniTotal extends StatelessWidget {
+  const _MiniTotal({required this.label, required this.value, required this.color});
+  final String label;
+  final double value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Text(
+        Fmt.compactMoney(value),
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color),
+      ),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }
 
 class _SyncBanner extends StatelessWidget {

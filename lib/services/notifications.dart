@@ -37,6 +37,22 @@ class NotificationService {
     iOS: DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
   );
 
+  /// Long bodies (the follow-up summary) expand to show every line on Android.
+  static NotificationDetails _detailsFor(String body) {
+    if (!body.contains('\n') && body.length < 60) return _details;
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        'clientpro_reminders',
+        'التذكيرات',
+        channelDescription: 'تذكيرات المهام والفواتير والعملاء',
+        importance: Importance.high,
+        priority: Priority.high,
+        styleInformation: BigTextStyleInformation(body),
+      ),
+      iOS: const DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
+    );
+  }
+
   Future<void> init() async {
     if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return;
     try {
@@ -87,7 +103,7 @@ class NotificationService {
           title: p.title,
           body: p.body,
           scheduledDate: tz.TZDateTime.from(p.at, tz.local),
-          notificationDetails: _details,
+          notificationDetails: _detailsFor(p.body),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           matchDateTimeComponents: p.repeat,
         );
@@ -244,6 +260,45 @@ class NotificationService {
             ),
           );
         });
+      }
+    }
+
+    if (prefs.followUpDigest) {
+      // The next few follow-ups, each worked out for its own date, so it
+      // stays right as bills and pay days come due. Rebuilt on every change.
+      final every = prefs.followUpEveryDays;
+      final minutes = prefs.followUpTime;
+      var at = DateTime(now.year, now.month, now.day, minutes ~/ 60, minutes % 60);
+      if (!at.isAfter(now)) at = at.add(Duration(days: every));
+      for (var i = 0; i < 6; i++) {
+        final f = store.followUp(at);
+        if (!f.isEmpty) {
+          oneOff.add(PlannedNotification(at: at, title: '📋 متابعة: مين اخد ومين عليه فلوس', body: f.summary()));
+        }
+        at = DateTime(at.year, at.month, at.day + every, at.hour, at.minute);
+      }
+    }
+
+    if (prefs.notifyDebts) {
+      for (final d in store.debts.all) {
+        final due = d.dueDate;
+        if (due == null || d.isSettled) continue;
+        final mine = d.direction == DebtDirection.owedToMe;
+        // On the due date, then weekly for three weeks while still open.
+        for (final week in const [0, 1, 2, 3]) {
+          final at = DateTime(due.year, due.month, due.day + week * 7, 11);
+          if (!at.isAfter(now)) continue;
+          oneOff.add(
+            PlannedNotification(
+              at: at,
+              title: mine
+                  ? (week == 0 ? '💵 النهارده ميعاد تحصيل من ${d.person}' : '💵 ${d.person} لسه عليه فلوس')
+                  : (week == 0 ? '💸 النهارده ميعاد سداد لـ ${d.person}' : '💸 لسه عليك فلوس لـ ${d.person}'),
+              body:
+                  '${mine ? 'باقي ليك' : 'باقي عليك'} ${Fmt.money(d.remaining)}${d.reason.isEmpty ? '' : ' — ${d.reason}'}',
+            ),
+          );
+        }
       }
     }
 
