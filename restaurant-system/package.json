@@ -1,0 +1,26 @@
+{
+  "name": "restaurant-orders-system",
+  "version": "1.0.0",
+  "description": "سيستم إدارة طلبات المطاعم - منيو، طلبات، فروع، عملاء، صلاحيات، لوحة تحكم",
+  "main": "server/index.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "reset-db": "node --disable-warning=ExperimentalWarning server/reset.js",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/api.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "socket.io": "^4.8.4"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
+}

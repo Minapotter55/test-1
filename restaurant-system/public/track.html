@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>متابعة الطلب</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    .track { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+    .steps { list-style: none; padding: 0; margin: 0; }
+    .steps li { display: flex; gap: 12px; align-items: flex-start; padding-bottom: 18px; position: relative; color: var(--text-3); }
+    .steps li::after { content: ''; position: absolute; right: 13px; top: 30px; bottom: 0; width: 2px; background: var(--border); }
+    .steps li:last-child::after { display: none; }
+    .steps .dot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); flex: none; display: grid; place-items: center; font-size: 14px; font-weight: 800; }
+    .steps li.done { color: var(--text); }
+    .steps li.done .dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+    .steps li.done::after { background: var(--ok); }
+    .steps li.current .dot { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 0 0 5px var(--primary-soft); }
+    .steps li.current { color: var(--text); font-weight: 800; }
+  </style>
+</head>
+<body>
+  <div class="track" id="app"><div class="loading"><div class="spinner"></div></div></div>
+  <script>
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const num = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const t = (s) => (s ? new Date(s.replace(' ', 'T')).toLocaleTimeString('ar-EG', { hour: 'numeric', minute: '2-digit' }) : '');
+    const LABELS = { new: 'تم استلام طلبك', accepted: 'الفرع قبل الطلب', preparing: 'جاري التحضير', ready: 'الطلب جاهز', out_for_delivery: 'الطيار في الطريق', delivered: 'تم التسليم' };
+    const token = location.hash.slice(1);
+
+    async function load() {
+      const el = document.getElementById('app');
+      try {
+        const r = await fetch(`api/public/track/${encodeURIComponent(token)}`);
+        const o = await r.json();
+        if (!r.ok) throw new Error(o.error || 'الطلب غير موجود');
+        document.title = `طلب #${o.order_no} - ${o.restaurant_name}`;
+        const steps = o.type === 'delivery' ? ['new', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered'] : ['new', 'accepted', 'preparing', 'ready', 'delivered'];
+        const idx = steps.indexOf(o.status);
+        const when = Object.fromEntries(o.history.map((h) => [h.status, h.created_at]));
+        el.innerHTML = `
+          <div style="text-align:center;margin-bottom:16px">
+            <h2 style="font-size:22px;font-weight:800">${esc(o.restaurant_name)}</h2>
+            <div class="muted">أهلاً ${esc(o.customer_name)} 👋</div>
+          </div>
+          <div class="card card-pad stack">
+            <div class="row between"><b style="font-size:18px" class="num">#${esc(o.order_no)}</b><span class="badge s-${esc(o.status)}">${esc(o.status_label)}</span></div>
+            ${o.status === 'cancelled' ? '<div class="empty">للأسف الطلب ده اتلغى. لو محتاج مساعدة كلمنا.</div>' : `
+            <ul class="steps">${steps.map((s, i) => `<li class="${i < idx || o.status === 'delivered' ? 'done' : ''} ${i === idx && o.status !== 'delivered' ? 'current' : ''}">
+              <span class="dot">${i < idx || o.status === 'delivered' ? '✓' : i + 1}</span>
+              <div>${LABELS[s]}${s === 'out_for_delivery' && o.driver_name && i <= idx ? ` (${esc(o.driver_name)})` : ''}<div class="small muted">${t(when[s])}</div></div></li>`).join('')}</ul>`}
+            <div class="totals" style="border-top:1px solid var(--border);padding-top:10px">
+              ${o.items.map((i) => `<div><span>${i.qty} × ${esc(i.name)}</span><span class="num">${num(i.line_total)}</span></div>`).join('')}
+              ${o.delivery_fee ? `<div><span>التوصيل</span><span class="num">${num(o.delivery_fee)}</span></div>` : ''}
+              ${o.discount ? `<div><span>الخصم</span><span class="num">-${num(o.discount)}</span></div>` : ''}
+              <div class="grand"><span>الإجمالي</span><span><span class="num">${num(o.total)}</span> ${esc(o.currency)}</span></div>
+            </div>
+            <div class="small muted">${esc(o.branch_name)} ${o.branch_phone ? `- <a href="tel:${esc(o.branch_phone)}" class="num">${esc(o.branch_phone)}</a>` : ''}</div>
+          </div>
+          <p class="small muted" style="text-align:center">الصفحة بتتحدث تلقائياً</p>`;
+        if (['delivered', 'cancelled'].includes(o.status)) clearInterval(timer);
+      } catch (e) {
+        el.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+        clearInterval(timer);
+      }
+    }
+    const timer = setInterval(load, 20000);
+    load();
+  </script>
+</body>
+</html>

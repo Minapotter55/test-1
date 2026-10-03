@@ -1,0 +1,22 @@
+{
+  "name": "restaurant-orders-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "تطبيق الموبايل (أندرويد / آيفون) لسيستم إدارة الطلبات - بيستخدم نفس واجهة الويب",
+  "scripts": {
+    "copy-web": "node scripts/copy-web.js",
+    "add:android": "npm run copy-web && npx cap add android && node scripts/patch-android.js",
+    "add:ios": "npm run copy-web && npx cap add ios",
+    "sync": "npm run copy-web && npx cap sync && node scripts/patch-android.js",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}
