@@ -7,6 +7,7 @@ import '../../services/format.dart';
 import '../widgets.dart';
 import 'fixed_expenses_screen.dart';
 import 'payroll_screen.dart';
+import 'sales_screen.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -29,6 +30,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       months.putIfAbsent(startOfMonth(e.date), () => []).add(e);
     }
     final keys = months.keys.toList()..sort((a, b) => b.compareTo(a));
+    final thisMonth = all.where((e) => !e.date.isBefore(startOfMonth(DateTime.now()))).toList();
+    final totals = <String, double>{};
+    for (final e in thisMonth) {
+      totals[e.categoryLabel] = (totals[e.categoryLabel] ?? 0) + e.amount;
+    }
+    final byCategory = [for (final t in totals.entries) (t.key, t.value)]..sort((a, b) => b.$2.compareTo(a.$2));
     void open([Expense? e]) => Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ExpenseFormScreen(expense: e), fullscreenDialog: true),
@@ -56,16 +63,52 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         child: const Icon(Icons.add),
       ),
       body: all.isEmpty
-          ? EmptyState(
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'لا توجد مصروفات',
-              message: 'سجّل مصروفاتك لتعرف صافي أرباحك الحقيقي',
-              actionLabel: 'إضافة مصروف',
-              onAction: open,
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                EmptyState(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'لا توجد مصروفات',
+                  message: 'سجّل مصروفات التشغيل (إيجار، كهرباء، عمالة...) عشان تعرف صافي ربحك الحقيقي',
+                  actionLabel: 'إضافة مصروف',
+                  onAction: open,
+                ),
+                const OperatingExpenseChips(),
+              ],
             )
           : ListView(
               padding: const EdgeInsets.only(bottom: 90),
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: SectionCard(
+                    title: 'مصاريف التشغيل — ${Fmt.month(DateTime.now())}',
+                    icon: Icons.storefront,
+                    trailing: Text(
+                      Fmt.money(thisMonth.fold(0.0, (s, e) => s + e.amount)),
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (label, amount) in byCategory.take(4))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(label)),
+                                Text(Fmt.money(amount)),
+                              ],
+                            ),
+                          ),
+                        if (byCategory.isNotEmpty) const Divider(),
+                        const Text('سجّل بسرعة:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        const OperatingExpenseChips(),
+                      ],
+                    ),
+                  ),
+                ),
                 ChipsBar<String>(
                   options: [null, ...labels],
                   selected: _category,
@@ -114,8 +157,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 }
 
 class ExpenseFormScreen extends StatefulWidget {
-  const ExpenseFormScreen({super.key, this.expense, this.customerId});
+  const ExpenseFormScreen({super.key, this.expense, this.customerId, this.presetTitle, this.presetCategory});
   final Expense? expense;
+
+  /// Pre-fills a new expense (from the quick operating-expense buttons).
+  final String? presetTitle;
+  final ExpenseCategory? presetCategory;
 
   /// Pre-selects the client this money was spent on.
   final String? customerId;
@@ -126,11 +173,11 @@ class ExpenseFormScreen extends StatefulWidget {
 
 class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late final Expense? _e = widget.expense;
-  late final _title = TextEditingController(text: _e?.title);
+  late final _title = TextEditingController(text: _e?.title ?? widget.presetTitle);
   late final _notes = TextEditingController(text: _e?.notes);
   late double _amount = _e?.amount ?? 0;
   late DateTime _date = _e?.date ?? DateTime.now();
-  late ExpenseCategory _category = _e?.category ?? ExpenseCategory.other;
+  late ExpenseCategory _category = _e?.category ?? widget.presetCategory ?? ExpenseCategory.other;
   late String _custom = _e?.customCategory ?? '';
   late String? _customerId = _e?.customerId ?? widget.customerId;
 

@@ -244,20 +244,25 @@ class Deal extends Entity {
 }
 
 class InvoiceItem {
-  InvoiceItem({this.name = '', this.quantity = 1, this.unitPrice = 0, this.productId});
+  InvoiceItem({this.name = '', this.quantity = 1, this.unitPrice = 0, this.productId, this.unitCost = 0});
   String name;
   double quantity;
   double unitPrice;
   String? productId;
 
-  double get total => quantity * unitPrice;
+  /// Purchase price at the time of sale, so profit stays right after price changes.
+  double unitCost;
 
-  Map<String, dynamic> toJson() => {'n': name, 'q': quantity, 'p': unitPrice, 'pid': productId};
+  double get total => quantity * unitPrice;
+  double get totalCost => quantity * unitCost;
+
+  Map<String, dynamic> toJson() => {'n': name, 'q': quantity, 'p': unitPrice, 'pid': productId, 'c': unitCost};
   factory InvoiceItem.fromJson(Map<String, dynamic> j) => InvoiceItem(
     name: _str(j['n']),
     quantity: _double(j['q']),
     unitPrice: _double(j['p']),
     productId: j['pid'] as String?,
+    unitCost: _double(j['c']),
   );
 }
 
@@ -297,6 +302,7 @@ class Invoice extends Entity {
     List<Payment>? payments,
     DateTime? createdAt,
     this.periodKey,
+    this.saleType,
   }) : issueDate = issueDate ?? DateTime.now(),
        dueDate = dueDate ?? DateTime.now(),
        items = items ?? [],
@@ -318,12 +324,23 @@ class Invoice extends Entity {
   /// "2026-09" when this is a client's monthly subscription invoice.
   String? periodKey;
 
+  /// Set for shop sales (cash or on credit); null for regular invoices.
+  SaleType? saleType;
+
+  bool get isSale => saleType != null;
+
   double get subtotal => items.fold(0, (s, i) => s + i.total);
   double get taxable => (subtotal - discount).clamp(0, double.infinity).toDouble();
   double get taxAmount => taxable * taxRate / 100;
   double get total => taxable + taxAmount;
   double get paidAmount => payments.fold(0, (s, p) => s + p.amount);
   double get balance => (total - paidAmount).clamp(0, double.infinity).toDouble();
+
+  /// Purchase cost of the goods sold.
+  double get cost => items.fold(0, (s, i) => s + i.totalCost);
+
+  /// Gross profit: sale value after discount, minus purchase cost.
+  double get profit => taxable - cost;
 
   InvoiceStatus get status {
     switch (state) {
@@ -355,6 +372,7 @@ class Invoice extends Entity {
     'items': items.map((i) => i.toJson()).toList(),
     'payments': payments.map((p) => p.toJson()).toList(),
     'period': periodKey,
+    'sale': saleType?.name,
     'created': _ms(createdAt),
   };
 
@@ -378,6 +396,7 @@ class Invoice extends Entity {
         .map((m) => Payment.fromJson(Map<String, dynamic>.from(m)))
         .toList(),
     periodKey: j['period'] as String?,
+    saleType: j['sale'] == null ? null : enumByName(SaleType.values, j['sale'], SaleType.cash),
     createdAt: _date(j['created']),
   );
 }

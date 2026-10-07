@@ -17,7 +17,18 @@ void loadSampleData(AppStore store) {
     Product(name: 'تصوير فيديو', price: 2500, cost: 900, isService: true, category: 'إنتاج'),
     Product(name: 'تصميم بوستات', price: 1500, cost: 400, isService: true, category: 'تصميم'),
     Product(name: 'استشارة تسويقية', price: 1000, isService: true, category: 'استشارات'),
+    // Printed goods kept in stock.
+    Product(name: 'كروت شخصية (علبة ٥٠٠)', sku: 'BC-500', price: 350, cost: 200, category: 'مطبوعات'),
+    Product(name: 'رول أب بانر', sku: 'RU-01', price: 900, cost: 550, category: 'مطبوعات'),
+    Product(name: 'بروشور (١٠٠٠ نسخة)', sku: 'BR-1K', price: 1800, cost: 1100, category: 'مطبوعات'),
+    Product(name: 'ستيكر لوجو (١٠٠)', sku: 'ST-100', price: 250, cost: 120, category: 'مطبوعات'),
   ];
+  for (final (i, stock) in [(5, 40), (6, 8), (7, 12), (8, 3)]) {
+    products[i]
+      ..trackStock = true
+      ..stock = stock
+      ..lowStockThreshold = 4;
+  }
   for (final p in products) {
     store.upsert(store.products, p);
   }
@@ -251,6 +262,28 @@ void loadSampleData(AppStore store) {
   ]) {
     store.saveAdjustment(a);
   }
+
+  // Shop sales: cash and on credit, some with a discount.
+  InvoiceItem line(Product p, double q) =>
+      InvoiceItem(name: p.name, quantity: q, unitPrice: p.price, productId: p.id, unitCost: p.cost);
+  for (final (days, type, items, discount, who, paid) in [
+    (0, SaleType.cash, [line(products[5], 2), line(products[8], 1)], 50.0, null, 0.0),
+    (0, SaleType.credit, [line(products[6], 1)], 0.0, 1, 300.0),
+    (1, SaleType.cash, [line(products[7], 1)], 100.0, null, 0.0),
+    (3, SaleType.credit, [line(products[5], 4), line(products[8], 2)], 0.0, 3, 0.0),
+    (5, SaleType.cash, [line(products[6], 2)], 0.0, null, 0.0),
+    (8, SaleType.credit, [line(products[7], 1)], 0.0, 1, 0.0),
+  ]) {
+    store.recordSale(
+      items: items,
+      type: type,
+      discount: discount,
+      customer: who == null ? null : customers[who],
+      paidNow: paid,
+      date: daysAgo(days),
+    );
+  }
+  store.payOnAccount(customers[1], 800, date: daysAgo(2), note: 'دفعة من الحساب');
 
   for (var m = 0; m < 6; m++) {
     final start = DateTime(now.year, now.month - m);

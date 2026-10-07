@@ -278,4 +278,101 @@ void main() {
     expect(copy.fixedPayment(f.id, '2026-09'), isNotNull);
     expect(copy.payslip(e2, DateTime(2026, 9)).isPaid, isTrue);
   });
+
+  group('shop', () {
+    Product item(String name, double price, double cost, int stock) =>
+        Product(name: name, price: price, cost: cost, stock: stock, trackStock: true);
+    InvoiceItem line(Product p, double q) =>
+        InvoiceItem(name: p.name, quantity: q, unitPrice: p.price, productId: p.id, unitCost: p.cost);
+
+    test('cash and credit sales: discount, profit, stock and summary', () {
+      final s = AppStore(persist: false);
+      final pen = item('قلم', 10, 6, 100);
+      final book = item('كشكول', 50, 30, 20);
+      s.upsert(s.products, pen);
+      s.upsert(s.products, book);
+      final c = Customer(name: 'أبو أحمد');
+      s.upsert(s.customers, c);
+
+      final cash = s.recordSale(items: [line(pen, 5), line(book, 2)], type: SaleType.cash, discount: 20);
+      expect(cash.total, 130); // 50 + 100 - 20
+      expect(cash.cost, 90); // 30 + 60
+      expect(cash.profit, 40);
+      expect(cash.balance, 0, reason: 'cash is paid in full');
+
+      final credit = s.recordSale(items: [line(book, 3)], type: SaleType.credit, customer: c, paidNow: 50);
+      expect(credit.paidAmount, 50);
+      expect(credit.balance, 100);
+      expect(s.balanceOf(c.id), 100);
+
+      expect((pen.stock, book.stock), (95, 15));
+
+      final sum = s.salesSummary();
+      expect((sum.cashTotal, sum.creditTotal, sum.discounts), (130.0, 150.0, 20.0));
+      expect(sum.cost, 180);
+      expect(sum.profit, 100);
+      expect(sum.count, 2);
+      expect(s.sales(type: SaleType.credit).single.id, credit.id);
+
+      // Cancelling returns the goods; restoring takes them out again.
+      s.cancelInvoice(credit);
+      expect(book.stock, 18);
+      expect(s.balanceOf(c.id), 0);
+      s.restoreInvoice(credit);
+      expect(book.stock, 15);
+      s.deleteInvoice(cash);
+      expect((pen.stock, book.stock), (100, 17));
+    });
+
+    test('credit account: withdrawals, partial payments FIFO and statement', () {
+      final s = AppStore(persist: false);
+      final p = item('شاي', 40, 30, 50);
+      s.upsert(s.products, p);
+      final c = Customer(name: 'محل الأمل');
+      s.upsert(s.customers, c);
+      final first = s.recordSale(items: [line(p, 5)], type: SaleType.credit, customer: c, date: DateTime(2026, 10, 1));
+      final second = s.recordSale(items: [line(p, 2)], type: SaleType.credit, customer: c, date: DateTime(2026, 10, 3));
+      expect(s.balanceOf(c.id), 280);
+      expect(s.creditAccounts().single.$2, 280);
+
+      expect(s.payOnAccount(c, 250, date: DateTime(2026, 10, 4)), 0);
+      expect(first.balance, 0, reason: 'oldest purchase is settled first');
+      expect(second.balance, 30);
+      expect(s.balanceOf(c.id), 30);
+
+      final st = s.statementOf(c.id);
+      expect(st.map((e) => e.balance), [200, 280, 30]);
+      expect(st.last.credit, 250);
+
+      expect(s.payOnAccount(c, 100), 70, reason: 'returns the overpaid amount');
+      expect(s.creditAccounts(), isEmpty);
+    });
+
+    test('shop stock value at cost and price; restock averages the cost', () {
+      final s = AppStore(persist: false);
+      final p = item('زيت', 100, 80, 10);
+      s.upsert(s.products, p);
+      s.upsert(s.products, Product(name: 'خدمة', price: 500, isService: true));
+      s.upsert(s.products, item('خلصان', 10, 5, 0));
+      expect(s.inventoryAtCost, 800);
+      expect(s.inventoryAtPrice, 1000);
+      expect(s.inventoryUnits, 10);
+
+      s.restock(p, 10, unitCost: 90);
+      expect(p.stock, 20);
+      expect(p.cost, 85);
+      expect(s.inventoryAtCost, 1700);
+    });
+
+    test('sale fields survive sync JSON', () {
+      final s = AppStore(persist: false);
+      final p = item('x', 10, 4, 5);
+      s.upsert(s.products, p);
+      final inv = s.recordSale(items: [line(p, 1)], type: SaleType.cash, discount: 1);
+      final copy = AppStore(persist: false)..replaceWith(s.snapshot());
+      final i2 = copy.invoices.items[inv.id]!;
+      expect((i2.saleType, i2.discount, i2.items.single.unitCost), (SaleType.cash, 1.0, 4.0));
+      expect(i2.profit, 5);
+    });
+  });
 }

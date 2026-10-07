@@ -15,6 +15,7 @@ import 'payroll_screen.dart';
 import 'products_screen.dart';
 import 'reminders_screen.dart';
 import 'reports_screen.dart';
+import 'sales_screen.dart';
 import 'settings_screen.dart';
 import 'sync_screen.dart';
 
@@ -27,6 +28,7 @@ class MoreScreen extends StatelessWidget {
     final sync = context.watch<DriveSync>();
     final openDeals = store.deals.all.where((d) => d.stage.isOpen).length;
     final lowStock = store.products.all.where((p) => p.isLowStock).length;
+    final creditTotal = store.creditAccounts().fold(0.0, (s, a) => s + a.$2);
     final today = DateTime.now();
     final unpaidFixed = store.unpaidFixed(today).where((f) => f.dueDay <= today.day).length;
 
@@ -59,6 +61,36 @@ class MoreScreen extends StatelessWidget {
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
             ),
           ),
+          const _Header('المحل والمبيعات'),
+          link(
+            'بيع جديد',
+            Icons.point_of_sale,
+            Colors.green,
+            () => const NewSaleScreen(),
+            subtitle: 'كاش أو آجل، مع خصم',
+          ),
+          link(
+            'المبيعات (كاش وآجل)',
+            Icons.receipt,
+            Colors.teal,
+            () => const SalesScreen(),
+            subtitle: 'مبيعات اليوم، الربح، الخصومات',
+          ),
+          link(
+            'حسابات الآجل',
+            Icons.menu_book,
+            Colors.orange,
+            () => const CreditAccountsScreen(),
+            subtitle: creditTotal > 0 ? 'عند الناس ${Fmt.money(creditTotal)}' : 'مسحوبات العملاء والدفعات',
+          ),
+          link(
+            'رصيد المحل والمنتجات',
+            Icons.warehouse,
+            Colors.blueGrey,
+            () => const ProductsScreen(),
+            subtitle: 'بسعر التكلفة ${Fmt.money(store.inventoryAtCost)}',
+            badge: lowStock > 0 ? Fmt.number(lowStock) : null,
+          ),
           const _Header('المبيعات'),
           link(
             'الصفقات والفرص',
@@ -66,13 +98,6 @@ class MoreScreen extends StatelessWidget {
             Colors.purple,
             () => const DealsScreen(),
             badge: openDeals > 0 ? Fmt.number(openDeals) : null,
-          ),
-          link(
-            'المنتجات والخدمات',
-            Icons.inventory_2,
-            Colors.blue,
-            () => const ProductsScreen(),
-            badge: lowStock > 0 ? Fmt.number(lowStock) : null,
           ),
           const _Header('المالية'),
           link(
@@ -82,7 +107,13 @@ class MoreScreen extends StatelessWidget {
             () => const ClientAccountsScreen(),
           ),
           link('الفواتير', Icons.receipt_long, Colors.blue, () => const InvoicesScreen()),
-          link('المصروفات', Icons.money_off, Colors.red, () => const ExpensesScreen()),
+          link(
+            'المصروفات التشغيلية',
+            Icons.money_off,
+            Colors.red,
+            () => const ExpensesScreen(),
+            subtitle: 'إيجار، كهرباء، عمالة، وغيرها',
+          ),
           link('التقارير', Icons.pie_chart, Colors.green, () => const ReportsScreen()),
           const _Header('المصاريف الثابتة والموظفين'),
           link(

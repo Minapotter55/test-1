@@ -270,7 +270,13 @@ class InvoiceDetailScreen extends StatelessWidget {
                     notes: inv.notes,
                     items: [
                       for (final i in inv.items)
-                        InvoiceItem(name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, productId: i.productId),
+                        InvoiceItem(
+                          name: i.name,
+                          quantity: i.quantity,
+                          unitPrice: i.unitPrice,
+                          productId: i.productId,
+                          unitCost: i.unitCost,
+                        ),
                     ],
                   );
                   store.upsert(store.invoices, copy);
@@ -281,14 +287,12 @@ class InvoiceDetailScreen extends StatelessWidget {
                     );
                   }
                 case 'cancel':
-                  inv.state = InvoiceState.cancelled;
-                  save();
+                  store.cancelInvoice(inv);
                 case 'restore':
-                  inv.state = InvoiceState.issued;
-                  save();
+                  store.restoreInvoice(inv);
                 case 'delete':
                   if (await confirm(context, 'حذف الفاتورة؟', 'سيتم حذف الفاتورة وكل المدفوعات المسجلة عليها.')) {
-                    store.delete(store.invoices, inv.id);
+                    store.deleteInvoice(inv);
                     if (context.mounted) Navigator.pop(context);
                   }
               }
@@ -640,7 +644,13 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     final items = [
       for (final i in _items)
         if (i.name.text.trim().isNotEmpty)
-          InvoiceItem(name: i.name.text.trim(), quantity: i.qty, unitPrice: i.price, productId: i.productId),
+          InvoiceItem(
+            name: i.name.text.trim(),
+            quantity: i.qty,
+            unitPrice: i.price,
+            productId: i.productId,
+            unitCost: _store.products.items[i.productId]?.cost ?? 0,
+          ),
     ];
     if (items.isEmpty) {
       toast(context, 'أضف بنداً واحداً على الأقل');
@@ -648,6 +658,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     }
     final isNew = _inv == null;
     final inv = _inv ?? Invoice();
+    // Stock leaves when an invoice is first issued (new, or a draft being issued).
+    final issuingNow = !draft && (isNew || inv.state == InvoiceState.draft);
     var number = _number.text.trim();
     if (isNew && number == _store.peekInvoiceNumber()) number = _store.takeInvoiceNumber();
     inv
@@ -666,7 +678,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     }
     _store.upsert(_store.invoices, inv);
 
-    if (isNew) {
+    if (issuingNow) {
       // Deduct stock for tracked products.
       for (final item in items) {
         final p = item.productId == null ? null : _store.products.items[item.productId];

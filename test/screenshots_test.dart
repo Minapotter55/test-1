@@ -18,7 +18,11 @@ import 'package:clientpro/ui/screens/customize_screen.dart';
 import 'package:clientpro/ui/screens/fixed_expenses_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
 import 'package:clientpro/ui/screens/payroll_screen.dart';
+import 'package:clientpro/models/models.dart';
+import 'package:clientpro/ui/screens/expenses_screen.dart';
+import 'package:clientpro/ui/screens/products_screen.dart';
 import 'package:clientpro/ui/screens/reminders_screen.dart';
+import 'package:clientpro/ui/screens/sales_screen.dart';
 import 'package:clientpro/ui/screens/sync_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,6 +60,11 @@ void main() {
     '11-fixed-expenses': (s) => const FixedExpensesScreen(),
     '12-commitments': (s) => const CommitmentsScreen(),
     '13-debt': (s) => DebtDetailScreen(id: s.debts.all.firstWhere((d) => !d.isSettled && d.paid > 0).id),
+    '14-sales': (s) => const SalesScreen(),
+    '15-new-sale': (s) => NewSaleScreen(customer: s.customers.all.first, type: SaleType.credit),
+    '16-ledger': (s) => CustomerLedgerScreen(customerId: s.creditAccounts().first.$1.id),
+    '17-products': (s) => const ProductsScreen(),
+    '18-expenses': (s) => const ExpensesScreen(),
   };
 
   for (final entry in pages.entries) {

@@ -15,6 +15,7 @@ import 'package:clientpro/ui/screens/payroll_screen.dart';
 import 'package:clientpro/ui/screens/invoices_screen.dart';
 import 'package:clientpro/ui/screens/products_screen.dart';
 import 'package:clientpro/ui/screens/reminders_screen.dart';
+import 'package:clientpro/ui/screens/sales_screen.dart';
 import 'package:clientpro/ui/screens/reports_screen.dart';
 import 'package:clientpro/ui/screens/settings_screen.dart';
 import 'package:clientpro/ui/screens/sync_screen.dart';
@@ -96,6 +97,11 @@ void main() {
     'customize fields': (st) => const CustomizeScreen(),
     'new customer form': (st) => const CustomerFormScreen(),
     'tasks': (st) => const TasksScreen(),
+    'sales': (st) => const SalesScreen(),
+    'new sale': (st) => const NewSaleScreen(),
+    'new credit sale': (st) => NewSaleScreen(customer: st.customers.all.first, type: SaleType.credit),
+    'credit accounts': (st) => const CreditAccountsScreen(),
+    'customer ledger': (st) => CustomerLedgerScreen(customerId: st.creditAccounts().first.$1.id),
     'commitments': (st) => const CommitmentsScreen(),
     'debt detail': (st) => DebtDetailScreen(id: st.debts.all.first.id),
     'debt form': (st) => DebtFormScreen(debt: st.debts.all.first),

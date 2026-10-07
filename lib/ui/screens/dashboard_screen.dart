@@ -14,7 +14,9 @@ import 'expenses_screen.dart';
 import 'fixed_expenses_screen.dart';
 import 'invoices_screen.dart';
 import 'payroll_screen.dart';
+import 'products_screen.dart';
 import 'reports_screen.dart';
+import 'sales_screen.dart';
 import 'sync_screen.dart';
 import 'tasks_screen.dart';
 
@@ -190,6 +192,7 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (store.invoices.all.any((i) => i.isSale)) ...[const SizedBox(height: 12), _TodaySalesCard(store: store)],
           if (store.employees.items.isNotEmpty ||
               store.fixedExpenses.items.isNotEmpty ||
               store.debts.items.isNotEmpty) ...[
@@ -297,6 +300,69 @@ class DashboardScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodaySalesCard extends StatelessWidget {
+  const _TodaySalesCard({required this.store});
+  final AppStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = store.salesSummary(from: DateTime(now.year, now.month, now.day));
+    final credit = store.creditAccounts().fold(0.0, (s, a) => s + a.$2);
+    void open(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    Widget cell(String label, double value, Color color) => Expanded(
+      child: Column(
+        children: [
+          FittedBox(
+            child: Text(
+              Fmt.compactMoney(value),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color),
+            ),
+          ),
+          Text(label, style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+
+    return SectionCard(
+      title: 'مبيعات النهارده',
+      icon: Icons.point_of_sale,
+      trailing: TextButton(onPressed: () => open(const SalesScreen()), child: const Text('الكل')),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              cell('كاش', today.cashTotal, Colors.green),
+              cell('آجل', today.creditTotal, Colors.orange),
+              cell('الربح', today.profit, Colors.teal),
+              cell('خصومات', today.discounts, Colors.pink),
+            ],
+          ),
+          const Divider(),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () => open(const CreditAccountsScreen()),
+                  icon: const Icon(Icons.menu_book, size: 18),
+                  label: Text('الآجل عند الناس ${Fmt.compactMoney(credit)}'),
+                ),
+              ),
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () => open(const ProductsScreen()),
+                  icon: const Icon(Icons.warehouse, size: 18),
+                  label: Text('رصيد المحل ${Fmt.compactMoney(store.inventoryAtCost)}'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -478,6 +544,7 @@ class _QuickActions extends StatelessWidget {
 
     return Row(
       children: [
+        action('بيع', Icons.point_of_sale, Colors.teal, () => openNewSale(context)),
         action('استلمت فلوس', Icons.south_west, Colors.green, () async {
           final c = await pickCustomer(context, title: 'استلمت فلوس من مين؟');
           if (c != null && context.mounted) showReceiveMoneySheet(context, c);
@@ -488,7 +555,6 @@ class _QuickActions extends StatelessWidget {
         }),
         action('عميل جديد', Icons.person_add_alt_1, Colors.blue, () => open(const CustomerFormScreen())),
         action('فاتورة', Icons.note_add, Colors.indigo, () => open(const InvoiceFormScreen())),
-        action('تذكير', Icons.add_alarm, Colors.orange, () => open(const TaskFormScreen())),
       ],
     );
   }

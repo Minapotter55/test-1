@@ -589,6 +589,181 @@ class AppStore extends ChangeNotifier {
   /// What leaves the business every month no matter what: salaries + fixed bills.
   double get monthlyCommitments => monthlySalaries + monthlyFixedTotal;
 
+  // MARK: Shop: sales, stock, credit accounts
+
+  /// Records a shop sale. Cash sales are paid in full; credit sales are
+  /// added to the customer's account ([paidNow] is an optional down payment).
+  /// Tracked products leave stock.
+  Invoice recordSale({
+    required List<InvoiceItem> items,
+    required SaleType type,
+    double discount = 0,
+    Customer? customer,
+    double paidNow = 0,
+    PaymentMethod method = PaymentMethod.cash,
+    DateTime? date,
+    String notes = '',
+  }) {
+    assert(type == SaleType.cash || customer != null, 'a credit sale needs a customer');
+    final when = date ?? DateTime.now();
+    final inv = Invoice(
+      number: takeInvoiceNumber(),
+      customerId: customer?.id,
+      issueDate: when,
+      dueDate: when,
+      discount: discount,
+      items: items,
+      notes: notes,
+      saleType: type,
+    );
+    final pay = type == SaleType.cash ? inv.total : paidNow.clamp(0, inv.total).toDouble();
+    if (pay > 0) inv.payments.add(Payment(amount: pay, date: when, method: method));
+    upsert(invoices, inv);
+    _moveStock(inv, -1);
+    if (customer != null && (customer.status == CustomerStatus.lead || customer.status == CustomerStatus.prospect)) {
+      customer.status = CustomerStatus.active;
+      upsert(customers, customer);
+    }
+    return inv;
+  }
+
+  /// [sign] -1 takes the invoice's goods out of stock, +1 puts them back.
+  void _moveStock(Invoice inv, int sign) {
+    for (final item in inv.items) {
+      final p = item.productId == null ? null : products.items[item.productId];
+      if (p != null && p.trackStock) {
+        p.stock += sign * item.quantity.round();
+        upsert(products, p);
+      }
+    }
+  }
+
+  /// Cancels an invoice and returns its goods to stock.
+  void cancelInvoice(Invoice inv) {
+    if (inv.state == InvoiceState.cancelled) return;
+    if (inv.state == InvoiceState.issued) _moveStock(inv, 1);
+    inv.state = InvoiceState.cancelled;
+    upsert(invoices, inv);
+  }
+
+  void restoreInvoice(Invoice inv) {
+    if (inv.state != InvoiceState.cancelled) return;
+    _moveStock(inv, -1);
+    inv.state = InvoiceState.issued;
+    upsert(invoices, inv);
+  }
+
+  void deleteInvoice(Invoice inv) {
+    if (inv.state == InvoiceState.issued) _moveStock(inv, 1);
+    delete(invoices, inv.id);
+  }
+
+  /// Shop sales (not cancelled) in [from, to), newest first.
+  List<Invoice> sales({DateTime? from, DateTime? to, SaleType? type}) {
+    bool inRange(DateTime d) => (from == null || !d.isBefore(from)) && (to == null || d.isBefore(to));
+    return invoices.all
+        .where((i) => i.isSale && i.state == InvoiceState.issued && inRange(i.issueDate))
+        .where((i) => type == null || i.saleType == type)
+        .toList()
+      ..sort((a, b) => b.issueDate.compareTo(a.issueDate));
+  }
+
+  SalesSummary salesSummary({DateTime? from, DateTime? to}) {
+    final list = sales(from: from, to: to);
+    double sum(Iterable<Invoice> l, double Function(Invoice) f) => l.fold(0.0, (s, i) => s + f(i));
+    final cash = list.where((i) => i.saleType == SaleType.cash);
+    final credit = list.where((i) => i.saleType == SaleType.credit);
+    bool inRange(DateTime d) => (from == null || !d.isBefore(from)) && (to == null || d.isBefore(to));
+    // Money collected in the period on credit sales (from any date).
+    final collected = invoices.all
+        .where((i) => i.saleType == SaleType.credit && i.state == InvoiceState.issued)
+        .expand((i) => i.payments)
+        .where((p) => inRange(p.date))
+        .fold(0.0, (s, p) => s + p.amount);
+    return SalesSummary(
+      count: list.length,
+      cashTotal: sum(cash, (i) => i.total),
+      creditTotal: sum(credit, (i) => i.total),
+      discounts: sum(list, (i) => i.discount),
+      cost: sum(list, (i) => i.cost),
+      profit: sum(list, (i) => i.profit),
+      creditCollected: collected,
+    );
+  }
+
+  /// Tracked products that are in stock.
+  Iterable<Product> get _stocked => products.all.where((p) => p.trackStock && !p.isService && p.stock > 0);
+
+  /// What the goods in the shop are worth at purchase (cost) price.
+  double get inventoryAtCost => _stocked.fold(0.0, (s, p) => s + p.stock * p.cost);
+
+  /// What the goods would bring in at selling price.
+  double get inventoryAtPrice => _stocked.fold(0.0, (s, p) => s + p.stock * p.price);
+  int get inventoryUnits => _stocked.fold(0, (s, p) => s + p.stock);
+
+  /// Adds goods to stock. The cost becomes the weighted average of old and new stock.
+  void restock(Product p, int quantity, {double? unitCost}) {
+    if (quantity <= 0) return;
+    final newCost = unitCost ?? p.cost;
+    final old = p.stock > 0 ? p.stock : 0;
+    p.cost = old + quantity == 0 ? newCost : (old * p.cost + quantity * newCost) / (old + quantity);
+    p.cost = (p.cost * 100).roundToDouble() / 100;
+    p.stock += quantity;
+    p.trackStock = true;
+    upsert(products, p);
+  }
+
+  /// Customers who owe money (credit sales and unpaid invoices), biggest first.
+  List<(Customer, double)> creditAccounts() => clientsWhoOwe();
+
+  /// Account statement: every purchase and payment with the running balance.
+  List<LedgerEntry> statementOf(String customerId) {
+    final raw = <(DateTime, String, double, double, Invoice)>[];
+    // One payment spread over several invoices shows as a single line.
+    final paid = <(int, String), (DateTime, double, Invoice)>{};
+    for (final inv in invoicesOf(customerId).where((i) => i.state == InvoiceState.issued)) {
+      raw.add((inv.issueDate, inv.isSale ? 'مسحوبات ${inv.number}' : 'فاتورة ${inv.number}', inv.total, 0, inv));
+      for (final p in inv.payments) {
+        final key = (p.date.millisecondsSinceEpoch, p.note);
+        final prev = paid[key];
+        paid[key] = (p.date, (prev?.$2 ?? 0) + p.amount, prev?.$3 ?? inv);
+      }
+    }
+    paid.forEach((key, v) => raw.add((v.$1, key.$2.isEmpty ? 'دفعة' : 'دفعة: ${key.$2}', 0, v.$2, v.$3)));
+    // Purchases before the payment made the same moment.
+    raw.sort((a, b) {
+      final c = a.$1.compareTo(b.$1);
+      return c != 0 ? c : b.$3.compareTo(a.$3);
+    });
+    var balance = 0.0;
+    return [
+      for (final r in raw)
+        LedgerEntry(date: r.$1, title: r.$2, debit: r.$3, credit: r.$4, balance: balance += r.$3 - r.$4, invoice: r.$5),
+    ];
+  }
+
+  /// A cash payment against a customer's account, applied to the oldest
+  /// open invoices first. Returns what's left over (if they paid more than owed).
+  double payOnAccount(
+    Customer c,
+    double amount, {
+    DateTime? date,
+    PaymentMethod method = PaymentMethod.cash,
+    String note = '',
+  }) {
+    var left = amount;
+    final open = invoicesOf(c.id).where((i) => i.status.isOutstanding).toList()
+      ..sort((a, b) => a.issueDate.compareTo(b.issueDate));
+    for (final inv in open) {
+      if (left <= 0.009) break;
+      final pay = left < inv.balance ? left : inv.balance;
+      inv.payments.add(Payment(amount: pay, date: date, method: method, note: note));
+      upsert(invoices, inv);
+      left -= pay;
+    }
+    return left;
+  }
+
   // MARK: Debts & follow-up
 
   /// Open debts in one direction, overdue / soonest due first.
@@ -673,6 +848,59 @@ class ClientAccount {
 
   double get profit => income - spent;
   double get margin => income > 0 ? profit / income * 100 : 0;
+}
+
+class SalesSummary {
+  SalesSummary({
+    required this.count,
+    required this.cashTotal,
+    required this.creditTotal,
+    required this.discounts,
+    required this.cost,
+    required this.profit,
+    required this.creditCollected,
+  });
+
+  final int count;
+  final double cashTotal;
+  final double creditTotal;
+  final double discounts;
+
+  /// Purchase cost of what was sold.
+  final double cost;
+
+  /// Sales after discount minus purchase cost.
+  final double profit;
+
+  /// Payments received on credit accounts during the period.
+  final double creditCollected;
+
+  double get total => cashTotal + creditTotal;
+}
+
+/// One line of a customer's account statement.
+class LedgerEntry {
+  LedgerEntry({
+    required this.date,
+    required this.title,
+    required this.debit,
+    required this.credit,
+    required this.balance,
+    required this.invoice,
+  });
+
+  final DateTime date;
+  final String title;
+
+  /// What they took (adds to what they owe).
+  final double debit;
+
+  /// What they paid.
+  final double credit;
+
+  /// What they owe after this line.
+  final double balance;
+  final Invoice invoice;
 }
 
 /// Snapshot of what's unpaid and who owes whom, used by the commitments

@@ -17,16 +17,13 @@ class ProductsScreen extends StatelessWidget {
     for (final p in products) {
       groups.putIfAbsent(p.category.isEmpty ? 'بدون تصنيف' : p.category, () => []).add(p);
     }
-    final stockValue = products
-        .where((p) => p.trackStock)
-        .fold<double>(0, (s, p) => s + (p.stock > 0 ? p.stock : 0) * p.cost);
     void open([Product? p]) => Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ProductFormScreen(product: p), fullscreenDialog: true),
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('المنتجات والخدمات')),
+      appBar: AppBar(title: const Text('المنتجات ورصيد المحل')),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-products',
         onPressed: open,
@@ -45,31 +42,33 @@ class ProductsScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Row(
+                  child: StatGrid(
                     children: [
-                      Expanded(
-                        child: StatCard(
-                          title: 'منتجات وخدمات',
-                          value: Fmt.number(products.length),
-                          icon: Icons.inventory_2,
-                          color: Colors.blue,
-                        ),
+                      StatCard(
+                        title: 'رصيد المحل بسعر التكلفة',
+                        value: Fmt.money(store.inventoryAtCost),
+                        icon: Icons.warehouse,
+                        color: Colors.teal,
+                        subtitle: '${Fmt.number(store.inventoryUnits)} قطعة',
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: StatCard(
-                          title: 'قيمة المخزون (بالتكلفة)',
-                          value: Fmt.compactMoney(stockValue),
-                          icon: Icons.warehouse,
-                          color: Colors.teal,
-                          subtitle: products.any((p) => p.isLowStock)
-                              ? '${Fmt.number(products.where((p) => p.isLowStock).length)} منخفض'
-                              : null,
-                        ),
+                      StatCard(
+                        title: 'رصيد المحل بسعر البيع',
+                        value: Fmt.money(store.inventoryAtPrice),
+                        icon: Icons.sell,
+                        color: Colors.blue,
+                        subtitle: 'ربح متوقع ${Fmt.money(store.inventoryAtPrice - store.inventoryAtCost)}',
                       ),
                     ],
                   ),
                 ),
+                if (products.any((p) => p.isLowStock))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '⚠️ ${Fmt.number(products.where((p) => p.isLowStock).length)} صنف قرب يخلص',
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 for (final g in (groups.keys.toList()..sort())) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -91,7 +90,7 @@ class ProductsScreen extends StatelessWidget {
                       subtitle: Text(
                         [
                           if (p.sku.isNotEmpty) p.sku,
-                          if (p.cost > 0) 'ربح ${Fmt.percent(p.marginPercent)}',
+                          if (p.cost > 0) 'شراء ${Fmt.money(p.cost)} • ربح ${Fmt.percent(p.marginPercent)}',
                           if (!p.isActive) 'موقوف',
                         ].join(' • '),
                       ),
@@ -108,6 +107,7 @@ class ProductsScreen extends StatelessWidget {
                         ],
                       ),
                       onTap: () => open(p),
+                      onLongPress: p.isService ? null : () => showRestockSheet(context, p),
                     ),
                 ],
               ],
@@ -220,7 +220,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             children: [
               Expanded(
                 child: AmountField(
-                  label: 'سعر البيع',
+                  label: 'سعر البيع للعميل',
                   value: _price,
                   suffix: Fmt.symbol,
                   onChanged: (v) => setState(() => _price = v),
@@ -229,7 +229,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: AmountField(
-                  label: 'التكلفة',
+                  label: 'سعر الشراء (التكلفة)',
                   value: _cost,
                   suffix: Fmt.symbol,
                   onChanged: (v) => setState(() => _cost = v),
@@ -252,6 +252,29 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             ),
             if (_track) ...[
               _Stepper(label: 'الكمية الحالية', value: _stock, onChanged: (v) => setState(() => _stock = v)),
+              if (_cost > 0 && _stock > 0)
+                Text(
+                  'قيمتها بالتكلفة ${Fmt.money(_stock * _cost)} • بسعر البيع ${Fmt.money(_stock * _price)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              if (_p != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      await showRestockSheet(context, _p);
+                      if (mounted) {
+                        setState(() {
+                          _stock = _p.stock;
+                          _cost = _p.cost;
+                          _track = true;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.add_box),
+                    label: const Text('توريد بضاعة (إضافة كمية بسعر شراء جديد)'),
+                  ),
+                ),
               _Stepper(label: 'تنبيه عند', value: _low, onChanged: (v) => setState(() => _low = v < 0 ? 0 : v)),
             ],
           ],
@@ -301,5 +324,45 @@ class _Stepper extends StatelessWidget {
       Text(Fmt.number(value), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       IconButton(onPressed: () => onChanged(value + 1), icon: const Icon(Icons.add_circle_outline)),
     ],
+  );
+}
+
+/// Adds goods to stock at a (possibly new) purchase price.
+Future<void> showRestockSheet(BuildContext context, Product p) {
+  var qty = 0.0;
+  var cost = p.cost;
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.viewInsetsOf(ctx).bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('توريد: ${p.name}', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Text('الموجود دلوقتي ${Fmt.number(p.stock)} • سعر الشراء ${Fmt.money(p.cost)}'),
+          const SizedBox(height: 12),
+          AmountField(label: 'الكمية الجديدة', value: 0, onChanged: (v) => qty = v),
+          const SizedBox(height: 8),
+          AmountField(label: 'سعر شراء القطعة', value: cost, suffix: Fmt.symbol, onChanged: (v) => cost = v),
+          const SizedBox(height: 4),
+          Text('لو السعر اتغير، التطبيق بيحسب متوسط التكلفة للمخزون كله', style: Theme.of(ctx).textTheme.bodySmall),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () {
+              if (qty < 1) {
+                toast(ctx, 'اكتب الكمية');
+                return;
+              }
+              ctx.read<AppStore>().restock(p, qty.round(), unitCost: cost);
+              Navigator.pop(ctx);
+            },
+            child: const Text('إضافة للمخزون'),
+          ),
+        ],
+      ),
+    ),
   );
 }

@@ -73,6 +73,7 @@ class Exporter {
       (x) => x.stage == DealStage.won && x.closedAt != null && inMonth(x.closedAt!),
     );
 
+    final shop = store.salesSummary(from: start, to: end);
     final summary = sheet('الملخص', ['البند', 'القيمة']);
     for (final row in [
       [t('الشهر'), t(Fmt.monthKey(start))],
@@ -81,6 +82,15 @@ class Exporter {
       [t('المحصّل (مدفوعات)'), n(revenue)],
       [t('المبيعات (فواتير صادرة)'), n(sales)],
       [t('عدد الفواتير'), n(invoices.length)],
+      [t('بيع نقدي (كاش)'), n(shop.cashTotal)],
+      [t('بيع آجل'), n(shop.creditTotal)],
+      [t('اتحصّل من الآجل'), n(shop.creditCollected)],
+      [t('خصومات المبيعات'), n(shop.discounts)],
+      [t('تكلفة البضاعة المباعة'), n(shop.cost)],
+      [t('ربح المبيعات'), n(shop.profit)],
+      [t('رصيد المحل بسعر التكلفة (الآن)'), n(store.inventoryAtCost)],
+      [t('رصيد المحل بسعر البيع (الآن)'), n(store.inventoryAtPrice)],
+      [t('الآجل عند العملاء (الآن)'), n(store.creditAccounts().fold<double>(0, (s, a) => s + a.$2))],
       [t('المصروفات'), n(spent)],
       [
         t('  منها مرتبات'),
@@ -120,6 +130,65 @@ class Exporter {
         n(i.paidAmount),
         n(i.balance),
       ]);
+    }
+
+    final saleList = store.sales(from: start, to: end).reversed.toList();
+    if (saleList.isNotEmpty) {
+      final sales = sheet('المبيعات', [
+        'التاريخ',
+        'الرقم',
+        'النوع',
+        'العميل',
+        'الأصناف',
+        'الإجمالي',
+        'الخصم',
+        'الصافي',
+        'التكلفة',
+        'الربح',
+        'المدفوع',
+        'الباقي (آجل)',
+      ]);
+      for (final i in saleList) {
+        sales.appendRow([
+          d(i.issueDate),
+          t(i.number),
+          t(i.saleType!.label),
+          t(store.customer(i.customerId)?.name ?? ''),
+          t(i.items.map((x) => '${Fmt.input(x.quantity)}× ${x.name}').join('، ')),
+          n(i.subtotal),
+          n(i.discount),
+          n(i.total),
+          n(i.cost),
+          n(i.profit),
+          n(i.paidAmount),
+          n(i.balance),
+        ]);
+      }
+    }
+
+    final stockItems = store.products.all.where((p) => p.trackStock && !p.isService).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    if (stockItems.isNotEmpty) {
+      final stock = sheet('رصيد المحل', [
+        'الصنف',
+        'الكود',
+        'الكمية',
+        'سعر الشراء',
+        'سعر البيع',
+        'القيمة بالتكلفة',
+        'القيمة بسعر البيع',
+      ]);
+      for (final p in stockItems) {
+        stock.appendRow([
+          t(p.name),
+          t(p.sku),
+          n(p.stock),
+          n(p.cost),
+          n(p.price),
+          n(p.stock > 0 ? p.stock * p.cost : 0),
+          n(p.stock > 0 ? p.stock * p.price : 0),
+        ]);
+      }
     }
 
     final pay = sheet('المدفوعات', ['التاريخ', 'الفاتورة', 'العميل', 'الطريقة', 'المبلغ', 'ملاحظة']);

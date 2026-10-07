@@ -108,7 +108,7 @@ enum InteractionType {
 
 enum ExpenseCategory {
   rent('إيجار', Icons.home_work, Colors.brown),
-  salaries('رواتب', Icons.groups, Colors.blue),
+  salaries('رواتب وعمالة', Icons.groups, Colors.blue),
   marketing('تسويق وإعلانات', Icons.campaign, Colors.pink),
   supplies('مستلزمات', Icons.inventory_2, Colors.orange),
   transport('مواصلات', Icons.local_shipping, Colors.teal),
@@ -143,6 +143,18 @@ enum FeeCycle {
 
   const FeeCycle(this.label);
   final String label;
+}
+
+/// How a shop sale was paid.
+enum SaleType {
+  cash('بيع نقدي (كاش)', 'كاش', Icons.payments, Colors.green),
+  credit('بيع آجل', 'آجل', Icons.schedule, Colors.orange);
+
+  const SaleType(this.label, this.short, this.icon, this.color);
+  final String label;
+  final String short;
+  final IconData icon;
+  final Color color;
 }
 
 /// Who owes whom in a [Debt].
