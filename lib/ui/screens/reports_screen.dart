@@ -1,17 +1,25 @@
+import 'dart:io';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/prefs.dart';
 import '../../data/store.dart';
 import '../../models/models.dart';
 import '../../services/exporter.dart';
 import '../../services/format.dart';
+import '../../services/report_pdf.dart';
 import '../widgets.dart';
 
-enum _Period { thisMonth, lastMonth, last3Months, thisYear, all }
+enum _Period { today, last7Days, thisMonth, lastMonth, last3Months, thisYear, all }
 
 extension on _Period {
   String get label => switch (this) {
+    _Period.today => 'اليوم',
+    _Period.last7Days => 'آخر ٧ أيام',
     _Period.thisMonth => 'هذا الشهر',
     _Period.lastMonth => 'الشهر الماضي',
     _Period.last3Months => 'آخر ٣ شهور',
@@ -23,7 +31,10 @@ extension on _Period {
     final now = DateTime.now();
     final month = startOfMonth(now);
     final end = now.add(const Duration(days: 1));
+    final today = DateTime(now.year, now.month, now.day);
     return switch (this) {
+      _Period.today => (today, end),
+      _Period.last7Days => (today.subtract(const Duration(days: 6)), end),
       _Period.thisMonth => (month, end),
       _Period.lastMonth => (DateTime(now.year, now.month - 1), month),
       _Period.last3Months => (DateTime(now.year, now.month - 2), end),
@@ -59,6 +70,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Colors.indigo,
     Colors.brown,
   ];
+
+  Future<void> _report(ReportKind kind, {bool share = false}) async {
+    final store = context.read<AppStore>();
+    final (from, to) = _period.range;
+    final bytes = await ReportPdf.build(
+      store,
+      kind,
+      from: from,
+      to: to,
+      periodLabel: _period == _Period.all
+          ? 'كل الفترات'
+          : '${_period.label}: ${Fmt.date(from)} - ${Fmt.date(to.subtract(const Duration(days: 1)))}',
+      accent: context.read<DevicePrefs>().accent.toARGB32(),
+    );
+    if (!mounted) return;
+    if (share) {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${kind.title}.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      if (mounted) await shareFile(context, file, text: kind.title);
+    } else {
+      await Printing.layoutPdf(onLayout: (_) async => bytes, name: kind.title);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +138,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final expenseSlices = [for (final e in byCategory.entries) _Slice(e.key, e.value.$1, e.value.$2)]
       ..sort((a, b) => b.value.compareTo(a.value));
 
+    final days = store.dailyProfit(start, end);
+
     final sources = <String, int>{};
     for (final c in newCustomers) {
       final s = c.source.isEmpty ? 'غير محدد' : c.source;
@@ -138,6 +175,71 @@ class _ReportsScreenState extends State<ReportsScreen> {
             items: [for (final p in _Period.values) DropdownMenuItem(value: p, child: Text(p.label))],
             onChanged: (p) => setState(() => _period = p ?? _period),
           ),
+          const SizedBox(height: 12),
+          SectionCard(
+            title: 'طباعة التقارير (PDF)',
+            icon: Icons.print,
+            child: Column(
+              children: [
+                for (final k in ReportKind.values)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(switch (k) {
+                      ReportKind.sales => Icons.swap_vert,
+                      ReportKind.daily => Icons.calendar_view_day,
+                      ReportKind.customers => Icons.people,
+                      ReportKind.inventory => Icons.warehouse,
+                    }),
+                    title: Text(k.title),
+                    subtitle: Text(k.usesPeriod ? _period.label : 'الوضع الحالي'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'مشاركة',
+                          onPressed: () => _report(k, share: true),
+                          icon: const Icon(Icons.share),
+                        ),
+                        IconButton(tooltip: 'طباعة', onPressed: () => _report(k), icon: const Icon(Icons.print)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (days.any((d) => d.count > 0 || d.expenses > 0)) ...[
+            const SizedBox(height: 12),
+            SectionCard(
+              title: 'الأرباح اليومية',
+              icon: Icons.calendar_view_day,
+              trailing: Text(
+                Fmt.money(days.fold(0.0, (s, d) => s + d.net)),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              child: Column(
+                children: [
+                  for (final d in days.reversed.take(31))
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(Fmt.weekday(d.date)),
+                      subtitle: Text(
+                        [
+                          'بيع ${Fmt.money(d.sales)}',
+                          'ربح ${Fmt.money(d.profit)}',
+                          if (d.expenses > 0) 'مصروفات ${Fmt.money(d.expenses)}',
+                        ].join(' • '),
+                      ),
+                      trailing: Text(
+                        Fmt.money(d.net),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: d.net >= 0 ? Colors.teal : Colors.red),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           StatGrid(
             children: [

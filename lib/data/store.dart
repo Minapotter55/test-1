@@ -77,6 +77,7 @@ class AppStore extends ChangeNotifier {
   final adjustments = Collection<SalaryAdjustment>('adjustments', SalaryAdjustment.fromJson);
   final fixedExpenses = Collection<FixedExpense>('fixedExpenses', FixedExpense.fromJson);
   final debts = Collection<Debt>('debts', Debt.fromJson);
+  final purchases = Collection<Purchase>('purchases', Purchase.fromJson);
 
   late final List<Collection> _collections = [
     customers,
@@ -90,6 +91,7 @@ class AppStore extends ChangeNotifier {
     adjustments,
     fixedExpenses,
     debts,
+    purchases,
   ];
 
   BusinessSettings business = BusinessSettings();
@@ -701,16 +703,69 @@ class AppStore extends ChangeNotifier {
   double get inventoryAtPrice => _stocked.fold(0.0, (s, p) => s + p.stock * p.price);
   int get inventoryUnits => _stocked.fold(0, (s, p) => s + p.stock);
 
-  /// Adds goods to stock. The cost becomes the weighted average of old and new stock.
-  void restock(Product p, int quantity, {double? unitCost}) {
-    if (quantity <= 0) return;
+  /// Adds goods to stock and records the purchase. The cost becomes the
+  /// weighted average of old and new stock.
+  Purchase restock(Product p, int quantity, {double? unitCost, String supplier = '', DateTime? date}) {
     final newCost = unitCost ?? p.cost;
+    final purchase = Purchase(
+      productId: p.id,
+      productName: p.name,
+      quantity: quantity,
+      unitCost: newCost,
+      supplier: supplier,
+      date: date,
+    );
+    if (quantity <= 0) return purchase;
     final old = p.stock > 0 ? p.stock : 0;
-    p.cost = old + quantity == 0 ? newCost : (old * p.cost + quantity * newCost) / (old + quantity);
+    p.cost = (old * p.cost + quantity * newCost) / (old + quantity);
     p.cost = (p.cost * 100).roundToDouble() / 100;
     p.stock += quantity;
     p.trackStock = true;
     upsert(products, p);
+    upsert(purchases, purchase);
+    return purchase;
+  }
+
+  /// Removes a purchase and takes its quantity back out of stock.
+  void deletePurchase(Purchase pu) {
+    final p = products.items[pu.productId];
+    if (p != null) {
+      p.stock -= pu.quantity;
+      upsert(products, p);
+    }
+    delete(purchases, pu.id);
+  }
+
+  List<Purchase> purchasesIn({DateTime? from, DateTime? to}) =>
+      purchases.all
+          .where((x) => (from == null || !x.date.isBefore(from)) && (to == null || x.date.isBefore(to)))
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+
+  /// Sales, cost, profit, expenses and net for each day in [from, to), oldest first.
+  List<DayProfit> dailyProfit(DateTime from, DateTime to) {
+    final days = <DateTime, DayProfit>{};
+    DayProfit day(DateTime d) =>
+        days.putIfAbsent(DateTime(d.year, d.month, d.day), () => DayProfit(DateTime(d.year, d.month, d.day)));
+    for (final i in sales(from: from, to: to)) {
+      final d = day(i.issueDate);
+      if (i.saleType == SaleType.cash) {
+        d.cash += i.total;
+      } else {
+        d.credit += i.total;
+      }
+      d.discounts += i.discount;
+      d.cost += i.cost;
+      d.profit += i.profit;
+      d.count++;
+    }
+    for (final e in expenses.all.where((e) => !e.date.isBefore(from) && e.date.isBefore(to))) {
+      day(e.date).expenses += e.amount;
+    }
+    for (final pu in purchasesIn(from: from, to: to)) {
+      day(pu.date).purchases += pu.total;
+    }
+    return days.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   /// Customers who owe money (credit sales and unpaid invoices), biggest first.
@@ -848,6 +903,19 @@ class ClientAccount {
 
   double get profit => income - spent;
   double get margin => income > 0 ? profit / income * 100 : 0;
+}
+
+/// One day's trading result.
+class DayProfit {
+  DayProfit(this.date);
+  final DateTime date;
+  double cash = 0, credit = 0, discounts = 0, cost = 0, profit = 0, expenses = 0, purchases = 0;
+  int count = 0;
+
+  double get sales => cash + credit;
+
+  /// Profit on goods sold minus that day's expenses.
+  double get net => profit - expenses;
 }
 
 class SalesSummary {

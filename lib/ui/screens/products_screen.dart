@@ -23,7 +23,16 @@ class ProductsScreen extends StatelessWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('المنتجات ورصيد المحل')),
+      appBar: AppBar(
+        title: const Text('المنتجات ورصيد المحل'),
+        actions: [
+          IconButton(
+            tooltip: 'المشتريات (التوريدات)',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PurchasesScreen())),
+            icon: const Icon(Icons.local_shipping),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab-products',
         onPressed: open,
@@ -331,6 +340,7 @@ class _Stepper extends StatelessWidget {
 Future<void> showRestockSheet(BuildContext context, Product p) {
   var qty = 0.0;
   var cost = p.cost;
+  final supplier = TextEditingController();
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -347,6 +357,11 @@ Future<void> showRestockSheet(BuildContext context, Product p) {
           AmountField(label: 'الكمية الجديدة', value: 0, onChanged: (v) => qty = v),
           const SizedBox(height: 8),
           AmountField(label: 'سعر شراء القطعة', value: cost, suffix: Fmt.symbol, onChanged: (v) => cost = v),
+          const SizedBox(height: 8),
+          TextField(
+            controller: supplier,
+            decoration: const InputDecoration(labelText: 'المورد (اختياري)', prefixIcon: Icon(Icons.local_shipping)),
+          ),
           const SizedBox(height: 4),
           Text('لو السعر اتغير، التطبيق بيحسب متوسط التكلفة للمخزون كله', style: Theme.of(ctx).textTheme.bodySmall),
           const SizedBox(height: 12),
@@ -356,7 +371,7 @@ Future<void> showRestockSheet(BuildContext context, Product p) {
                 toast(ctx, 'اكتب الكمية');
                 return;
               }
-              ctx.read<AppStore>().restock(p, qty.round(), unitCost: cost);
+              ctx.read<AppStore>().restock(p, qty.round(), unitCost: cost, supplier: supplier.text.trim());
               Navigator.pop(ctx);
             },
             child: const Text('إضافة للمخزون'),
@@ -365,4 +380,62 @@ Future<void> showRestockSheet(BuildContext context, Product p) {
       ),
     ),
   );
+}
+
+/// Every restock: what came in, from whom, at what price.
+class PurchasesScreen extends StatelessWidget {
+  const PurchasesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<AppStore>();
+    final list = store.purchasesIn();
+    final monthStart = startOfMonth(DateTime.now());
+    final month = list.where((p) => !p.date.isBefore(monthStart)).fold(0.0, (s, p) => s + p.total);
+    return Scaffold(
+      appBar: AppBar(title: const Text('المشتريات (التوريدات)')),
+      body: list.isEmpty
+          ? const EmptyState(
+              icon: Icons.local_shipping_outlined,
+              title: 'لسه مفيش توريدات',
+              message: 'من شاشة المنتجات: اضغط ضغطة طويلة على الصنف ← توريد بضاعة',
+            )
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: StatCard(
+                    title: 'مشتريات الشهر ده',
+                    value: Fmt.money(month),
+                    icon: Icons.local_shipping,
+                    color: Colors.indigo,
+                  ),
+                ),
+                for (final p in list)
+                  ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.add_box)),
+                    title: Text('${Fmt.number(p.quantity)} × ${p.productName}'),
+                    subtitle: Text(
+                      [
+                        Fmt.date(p.date),
+                        '${Fmt.money(p.unitCost)} للقطعة',
+                        if (p.supplier.isNotEmpty) p.supplier,
+                      ].join(' • '),
+                    ),
+                    trailing: Text(Fmt.money(p.total), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    onLongPress: () async {
+                      if (await confirm(
+                        context,
+                        'حذف التوريد؟',
+                        'هيتشال ${Fmt.number(p.quantity)} قطعة من مخزون ${p.productName}',
+                      )) {
+                        store.deletePurchase(p);
+                      }
+                    },
+                  ),
+              ],
+            ),
+    );
+  }
 }

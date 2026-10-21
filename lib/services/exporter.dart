@@ -191,6 +191,14 @@ class Exporter {
       }
     }
 
+    final buys = store.purchasesIn(from: start, to: end).reversed.toList();
+    if (buys.isNotEmpty) {
+      final sheetBuys = sheet('المشتريات', ['التاريخ', 'الصنف', 'المورد', 'الكمية', 'سعر الشراء', 'الإجمالي']);
+      for (final p in buys) {
+        sheetBuys.appendRow([d(p.date), t(p.productName), t(p.supplier), n(p.quantity), n(p.unitCost), n(p.total)]);
+      }
+    }
+
     final pay = sheet('المدفوعات', ['التاريخ', 'الفاتورة', 'العميل', 'الطريقة', 'المبلغ', 'ملاحظة']);
     for (final p in payments) {
       pay.appendRow([

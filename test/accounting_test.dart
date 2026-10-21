@@ -364,6 +364,47 @@ void main() {
       expect(s.inventoryAtCost, 1700);
     });
 
+    test('restock records a purchase; deleting it takes the goods back out', () {
+      final s = AppStore(persist: false);
+      final p = item('أرز', 30, 20, 10);
+      s.upsert(s.products, p);
+      final pu = s.restock(p, 10, unitCost: 24, supplier: 'المورد', date: DateTime(2026, 10, 5));
+      expect((p.stock, p.cost), (20, 22.0));
+      expect(s.purchasesIn().single.total, 240);
+      expect(s.purchasesIn(from: DateTime(2026, 10, 6)), isEmpty);
+      final copy = AppStore(persist: false)..replaceWith(s.snapshot());
+      expect(copy.purchases.items[pu.id]!.supplier, 'المورد');
+      s.deletePurchase(pu);
+      expect(p.stock, 10);
+      expect(s.purchases.items, isEmpty);
+    });
+
+    test('daily profit: sales, cost, discounts and expenses per day', () {
+      final s = AppStore(persist: false);
+      final p = item('علبة', 100, 60, 50);
+      s.upsert(s.products, p);
+      final c = Customer(name: 'ع');
+      s.upsert(s.customers, c);
+      s.recordSale(items: [line(p, 2)], type: SaleType.cash, discount: 50, date: DateTime(2026, 10, 1, 10));
+      s.recordSale(items: [line(p, 1)], type: SaleType.credit, customer: c, date: DateTime(2026, 10, 1, 18));
+      s.recordSale(items: [line(p, 1)], type: SaleType.cash, date: DateTime(2026, 10, 3, 12));
+      s.upsert(s.expenses, Expense(title: 'كهرباء', amount: 30, date: DateTime(2026, 10, 1, 9)));
+      s.upsert(
+        s.expenses,
+        Expense(title: 'سحب شخصي', amount: 20, category: ExpenseCategory.personal, date: DateTime(2026, 10, 2)),
+      );
+
+      final days = s.dailyProfit(DateTime(2026, 10), DateTime(2026, 11));
+      expect(days.map((d) => d.date.day), [1, 2, 3]);
+      final first = days.first;
+      expect((first.cash, first.credit, first.discounts, first.count), (150.0, 100.0, 50.0, 2));
+      expect(first.cost, 180);
+      expect(first.profit, 70); // 250 - 180
+      expect(first.net, 40); // minus 30 electricity
+      expect(days[1].net, -20);
+      expect(days[2].profit, 40);
+    });
+
     test('sale fields survive sync JSON', () {
       final s = AppStore(persist: false);
       final p = item('x', 10, 4, 5);

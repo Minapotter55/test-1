@@ -116,6 +116,7 @@ enum ExpenseCategory {
   software('برامج واشتراكات', Icons.apps, Colors.indigo),
   maintenance('صيانة ونظافة', Icons.build, Colors.blueGrey),
   taxes('ضرائب وتأمينات', Icons.account_balance, Colors.deepPurple),
+  personal('مصاريف شخصية', Icons.person, Colors.cyan),
   other('أخرى', Icons.more_horiz, Colors.grey);
 
   const ExpenseCategory(this.label, this.icon, this.color);

@@ -9,6 +9,7 @@ import 'package:clientpro/services/exporter.dart';
 import 'package:clientpro/services/format.dart';
 import 'package:clientpro/services/invoice_pdf.dart';
 import 'package:clientpro/services/notifications.dart';
+import 'package:clientpro/services/report_pdf.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -183,6 +184,23 @@ void main() {
     final json = jsonEncode({'app': 'ClientPro', 'customers': source.customers.toJson()});
     expect(exporter.restoreFromJson(json, merge: false), isNull);
     expect(store.customers.items.length, source.customers.items.length);
+  });
+
+  test('every printable report builds as a PDF', () async {
+    final store = AppStore(persist: false);
+    loadSampleData(store);
+    final now = DateTime.now();
+    for (final kind in ReportKind.values) {
+      final bytes = await ReportPdf.build(
+        store,
+        kind,
+        from: DateTime(now.year, now.month),
+        to: now.add(const Duration(days: 1)),
+        periodLabel: 'هذا الشهر',
+      );
+      expect(utf8.decode(bytes.sublist(0, 5), allowMalformed: true), '%PDF-', reason: kind.name);
+      expect(bytes.length, greaterThan(5000), reason: kind.name);
+    }
   });
 
   test('invoice PDF renders with Arabic font', () async {

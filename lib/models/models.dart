@@ -775,6 +775,54 @@ class SalaryAdjustment extends Entity {
   );
 }
 
+/// Goods bought for the shop (a restock): adds to stock at a purchase price.
+class Purchase extends Entity {
+  Purchase({
+    super.id,
+    super.updatedAt,
+    this.productId,
+    this.productName = '',
+    this.quantity = 0,
+    this.unitCost = 0,
+    this.supplier = '',
+    DateTime? date,
+    this.notes = '',
+  }) : date = date ?? DateTime.now();
+
+  String? productId;
+  String productName, supplier, notes;
+  int quantity;
+  double unitCost;
+  DateTime date;
+
+  double get total => quantity * unitCost;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'u': updatedAt,
+    'product': productId,
+    'name': productName,
+    'qty': quantity,
+    'cost': unitCost,
+    'supplier': supplier,
+    'date': _ms(date),
+    'notes': notes,
+  };
+
+  factory Purchase.fromJson(Map<String, dynamic> j) => Purchase(
+    id: j['id'] as String?,
+    updatedAt: j['u'] as int?,
+    productId: j['product'] as String?,
+    productName: _str(j['name']),
+    quantity: _int(j['qty']),
+    unitCost: _double(j['cost']),
+    supplier: _str(j['supplier']),
+    date: _date(j['date']),
+    notes: _str(j['notes']),
+  );
+}
+
 /// Money someone owes me, or that I owe someone (supplier, freelancer,
 /// landlord, a friend...), settled with one or more payments.
 class Debt extends Entity {

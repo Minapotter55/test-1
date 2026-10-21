@@ -263,6 +263,8 @@ void loadSampleData(AppStore store) {
     store.saveAdjustment(a);
   }
 
+  store.restock(products[5], 20, unitCost: 210, supplier: 'مطبعة الأمل', date: daysAgo(12));
+  store.restock(products[7], 5, unitCost: 1050, supplier: 'مطبعة الأمل', date: daysAgo(6));
   // Shop sales: cash and on credit, some with a discount.
   InvoiceItem line(Product p, double q) =>
       InvoiceItem(name: p.name, quantity: q, unitPrice: p.price, productId: p.id, unitCost: p.cost);

@@ -11,6 +11,7 @@ import 'expenses_screen.dart';
 import 'invoices_screen.dart';
 import 'payroll_screen.dart';
 import 'products_screen.dart';
+import 'reports_screen.dart';
 
 enum _Period {
   today('اليوم'),
@@ -86,6 +87,11 @@ class _SalesScreenState extends State<SalesScreen> {
             tooltip: 'حسابات الآجل',
             onPressed: () => push(const CreditAccountsScreen()),
             icon: const Icon(Icons.menu_book),
+          ),
+          IconButton(
+            tooltip: 'التقارير والطباعة',
+            onPressed: () => push(const ReportsScreen()),
+            icon: const Icon(Icons.print),
           ),
           IconButton(
             tooltip: 'رصيد المحل',
@@ -257,11 +263,16 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   late SaleType _type = widget.type;
   late Customer? _customer = widget.customer;
   final _lines = <_CartLine>[];
-  double _discount = 0;
+
+  /// What the user typed in the discount box: pounds, or a percentage when [_percent].
+  double _discountInput = 0;
+  bool _percent = false;
   double _paidNow = 0;
   String _q = '';
 
   double get _subtotal => _lines.fold(0.0, (s, l) => s + l.total);
+  double get _discount =>
+      _percent ? (_subtotal * _discountInput.clamp(0, 100) / 100 * 100).roundToDouble() / 100 : _discountInput;
   double get _total => (_subtotal - _discount).clamp(0, double.infinity).toDouble();
   double get _cost => _lines.fold(0.0, (s, l) => s + l.qty * l.cost);
 
@@ -478,11 +489,30 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                   const Divider(),
                   MoneyRow('الإجمالي', _subtotal),
                   const SizedBox(height: 8),
-                  AmountField(
-                    label: 'قيمة الخصم',
-                    value: _discount,
-                    suffix: Fmt.symbol,
-                    onChanged: (v) => setState(() => _discount = v),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AmountField(
+                          label: _percent ? 'نسبة الخصم' : 'قيمة الخصم',
+                          value: _discountInput,
+                          suffix: _percent ? '٪' : Fmt.symbol,
+                          onChanged: (v) => setState(() => _discountInput = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SegmentedButton<bool>(
+                        showSelectedIcon: false,
+                        segments: [
+                          ButtonSegment(value: false, label: Text(Fmt.symbol)),
+                          const ButtonSegment(value: true, label: Text('٪')),
+                        ],
+                        selected: {_percent},
+                        onSelectionChanged: (v) => setState(() {
+                          _percent = v.first;
+                          _discountInput = 0;
+                        }),
+                      ),
+                    ],
                   ),
                   Align(
                     alignment: AlignmentDirectional.centerStart,
@@ -492,14 +522,26 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                         for (final pct in const [5, 10, 15, 20])
                           ActionChip(
                             label: Text('${Fmt.number(pct)}٪'),
-                            onPressed: () => setState(() => _discount = (_subtotal * pct / 100).roundToDouble()),
+                            onPressed: () => setState(() {
+                              _percent = true;
+                              _discountInput = pct.toDouble();
+                            }),
                           ),
                         if (_discount > 0)
-                          ActionChip(label: const Text('بدون خصم'), onPressed: () => setState(() => _discount = 0)),
+                          ActionChip(
+                            label: const Text('بدون خصم'),
+                            onPressed: () => setState(() => _discountInput = 0),
+                          ),
                       ],
                     ),
                   ),
-                  if (_discount > 0) MoneyRow('الخصم', _discount, color: Colors.pink, sign: '- '),
+                  if (_discount > 0)
+                    MoneyRow(
+                      _percent ? 'الخصم (${Fmt.number(_discountInput)}٪)' : 'الخصم',
+                      _discount,
+                      color: Colors.pink,
+                      sign: '- ',
+                    ),
                   MoneyRow('الصافي', _total, bold: true),
                   if (_cost > 0)
                     MoneyRow('ربحك من البيعة دي', _total - _cost, color: _total >= _cost ? Colors.teal : Colors.red),
@@ -824,6 +866,7 @@ class OperatingExpenseChips extends StatelessWidget {
     ('نقل وشحن', ExpenseCategory.transport, Icons.local_shipping),
     ('صيانة', ExpenseCategory.maintenance, Icons.build),
     ('مستلزمات', ExpenseCategory.supplies, Icons.inventory_2),
+    ('مصاريف شخصية', ExpenseCategory.personal, Icons.person),
     ('نثريات', ExpenseCategory.other, Icons.more_horiz),
   ];
 

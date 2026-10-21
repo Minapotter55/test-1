@@ -98,6 +98,7 @@ void main() {
     'new customer form': (st) => const CustomerFormScreen(),
     'tasks': (st) => const TasksScreen(),
     'sales': (st) => const SalesScreen(),
+    'purchases': (st) => const PurchasesScreen(),
     'new sale': (st) => const NewSaleScreen(),
     'new credit sale': (st) => NewSaleScreen(customer: st.customers.all.first, type: SaleType.credit),
     'credit accounts': (st) => const CreditAccountsScreen(),
