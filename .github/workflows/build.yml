@@ -87,6 +87,22 @@ jobs:
           name: ClientPro-ios
           path: ClientPro-unsigned.ipa
 
+  web:
+    # Web version (opens in Safari / any browser): published to the gh-pages branch.
+    # One-time setup: Settings → Pages → Deploy from a branch → gh-pages / (root).
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/customer-management-ios-app-5zau5e')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          publish_branch: gh-pages
+          force_orphan: true
+
   release:
     # Publish ready-to-install files for every push to the main or app branch.
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/customer-management-ios-app-5zau5e')
@@ -95,6 +111,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+      - run: cp src/web/index.html ClientPro-web.html
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -108,9 +128,12 @@ jobs:
             ClientPro.apk
             ClientPro-arm64.apk
             ClientPro-unsigned.ipa
+            ClientPro-web.html
           body: |
             ## تحميل التطبيق
 
             **أندرويد:** نزّل `ClientPro-arm64.apk` (أصغر، ويشتغل على أغلب الموبايلات الحديثة) أو `ClientPro.apk` (يشتغل على كل الأجهزة) وافتحه على الموبايل عشان يتسطّب (اسمح بالتثبيت من مصادر غير معروفة لو طلب).
+
+            **نسخة الويب (سفاري):** افتح https://minapotter55.github.io/test-1/ من سفاري وبعدين مشاركة ← "إضافة إلى الشاشة الرئيسية".
 
             **آيفون:** نزّل `ClientPro-unsigned.ipa` وسطّبه بـ [Sideloadly](https://sideloadly.io) أو AltStore باستخدام حساب Apple بتاعك. الخطوات في README.

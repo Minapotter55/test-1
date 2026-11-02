@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ClientPro">
+<meta name="theme-color" content="#0f766e">
+<link rel="apple-touch-icon" id="touchIcon" href="">
+<title>ClientPro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: one column, big tap targets, bottom tab bar. Palette: shop-ledger teal + warm paper. */
+:root {
+  --bg: #f5f4ef; --card: #ffffff; --fg: #1d2421; --muted: #66706b; --line: #e3e1d8;
+  --accent: #0f766e; --accent-soft: #d8eeea; --on-accent: #ffffff;
+  --good: #15803d; --good-soft: #dcf2e3; --warn: #b45309; --warn-soft: #fbecd5;
+  --bad: #b91c1c; --bad-soft: #fbe1e1;
+  --font: "Tajawal", "SF Arabic", "Geeza Pro", "Segoe UI", Tahoma, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121615; --card: #1b2120; --fg: #e9eeec; --muted: #9aa5a1; --line: #2c3533;
+    --accent: #2dd4bf; --accent-soft: #163a36; --on-accent: #062b27;
+    --good: #4ade80; --good-soft: #143322; --warn: #fbbf24; --warn-soft: #3a2c10;
+    --bad: #f87171; --bad-soft: #3d1a1a;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); }
+body { font-size: 16px; line-height: 1.5; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+button, input, select, textarea { font: inherit; color: inherit; }
+.wrap { max-width: 720px; margin: 0 auto; padding-block: 12px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { position: sticky; top: 0; z-index: 5; background: var(--bg);
+  padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 8px; padding-block: 10px; }
+header.top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 800; text-wrap: balance; }
+.icon-btn { border: 0; background: transparent; padding: 8px; border-radius: 10px; font-size: 20px; cursor: pointer; min-width: 44px; min-height: 44px; }
+.icon-btn:focus-visible, .btn:focus-visible, .tab:focus-visible, .chip:focus-visible, .tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+nav.tabs { position: fixed; inset: auto 0 0 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  padding: 4px max(4px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); }
+.tab { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 2px; font-size: 12px; color: var(--muted); cursor: pointer; border-radius: 12px; }
+.tab .i { font-size: 22px; line-height: 1; }
+.tab.on { color: var(--accent); font-weight: 700; background: var(--accent-soft); }
+
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row > .grow { flex: 1; min-width: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+.card h2 { font-size: 16px; margin: 0 0 10px; font-weight: 800; }
+.muted { color: var(--muted); font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+.big { font-size: 26px; font-weight: 800; }
+
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.stat .label { font-size: 13px; color: var(--muted); }
+.stat .value { font-size: 20px; font-weight: 800; }
+.stat.good .value { color: var(--good); } .stat.warn .value { color: var(--warn); } .stat.bad .value { color: var(--bad); }
+.stat.hero { grid-column: 1 / -1; background: var(--accent); color: var(--on-accent); border: 0; }
+.stat.hero .label { color: inherit; opacity: .85; } .stat.hero .value { font-size: 30px; }
+
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--line); background: var(--card); border-radius: 16px; padding: 16px 12px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; cursor: pointer; text-align: start; }
+.tile .i { font-size: 26px; } .tile b { font-size: 17px; } .tile span { font-size: 13px; color: var(--muted); }
+.tile.main { background: var(--accent); color: var(--on-accent); border: 0; grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; }
+.tile.main span { color: inherit; opacity: .85; }
+
+.btn { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 700; cursor: pointer; min-height: 48px;
+  background: var(--accent); color: var(--on-accent); }
+.btn.soft { background: var(--accent-soft); color: var(--accent); }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.btn.danger { background: var(--bad-soft); color: var(--bad); }
+.btn.good { background: var(--good); color: #fff; }
+.btn.warn { background: var(--warn); color: #fff; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.list { display: flex; flex-direction: column; }
+.item { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.item:last-child { border-bottom: 0; }
+.item .grow { flex: 1; min-width: 0; }
+.item .t { font-weight: 700; overflow-wrap: anywhere; }
+.item .s { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.item .amt { font-weight: 800; white-space: nowrap; }
+.dot { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); flex: none; font-size: 18px; }
+
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+input.in, select.in, textarea.in { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 12px; font-size: 17px; color: var(--fg); min-height: 48px; }
+input.in:focus, select.in:focus, textarea.in:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: none; padding: 10px 6px; border-radius: 9px; font-weight: 700; cursor: pointer; color: var(--muted); min-height: 44px; }
+.seg button.on { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+.seg.cash button.on.c { background: var(--good); color: #fff; }
+.seg.cash button.on.d { background: var(--warn); color: #fff; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 99px; padding: 8px 12px; cursor: pointer; font-size: 14px; min-height: 40px; }
+.chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+
+.products { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.prod { border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px; text-align: start; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 76px; }
+.prod b { font-size: 15px; overflow-wrap: anywhere; } .prod span { font-size: 13px; color: var(--muted); }
+.prod.out { opacity: .55; }
+.prod .badge { align-self: flex-start; }
+
+.cart-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.qty { display: flex; align-items: center; gap: 4px; }
+.qty button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 18px; cursor: pointer; }
+.sumrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.sumrow.total { font-size: 20px; font-weight: 800; border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; }
+
+.paybar { position: fixed; inset: auto 0 calc(64px + env(safe-area-inset-bottom, 0px)) 0; z-index: 5; background: var(--card); border-top: 1px solid var(--line);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); }
+.paybar .inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+
+.sheet-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--card); width: 100%; max-width: 640px; border-radius: 20px 20px 0 0; max-height: 92vh; overflow-y: auto;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet h3 { margin: 0 0 12px; font-size: 18px; }
+
+.toast { position: fixed; z-index: 30; inset: auto 16px calc(140px + env(safe-area-inset-bottom, 0px)) 16px; margin: 0 auto; max-width: 420px;
+  background: var(--fg); color: var(--bg); padding: 12px 16px; border-radius: 12px; text-align: center; font-weight: 700; }
+
+.empty { text-align: center; padding: 28px 12px; color: var(--muted); }
+.empty .i { font-size: 40px; }
+.tbl-wrap { overflow-x: auto; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl th, .tbl td { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: start; white-space: nowrap; }
+.tbl th { color: var(--muted); font-weight: 700; font-size: 13px; }
+.tbl tfoot td { font-weight: 800; }
+.print-only { display: none; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(24px); opacity: .6; } } }
+
+@media print {
+  body { padding: 0; background: #fff; color: #000; font-size: 12px; }
+  header.top, nav.tabs, .no-print, .paybar, .toast { display: none !important; }
+  .print-only { display: block; }
+  .card, .stat { border: 1px solid #bbb; break-inside: avoid; background: #fff; color: #000; }
+  .stat.hero { background: #fff; color: #000; }
+  .tbl th, .tbl td { border-bottom: 1px solid #ccc; white-space: normal; }
+  .wrap { max-width: none; padding: 0; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1 id="title">ClientPro</h1>
+    <button class="icon-btn" id="settingsBtn" aria-label="الإعدادات" title="الإعدادات">⚙️</button>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<nav class="tabs" id="tabs" aria-label="الأقسام">
+  <button class="tab" data-go="home"><span class="i">🏠</span>الرئيسية</button>
+  <button class="tab" data-go="sell"><span class="i">🛒</span>بيع</button>
+  <button class="tab" data-go="customers"><span class="i">📒</span>الآجل</button>
+  <button class="tab" data-go="products"><span class="i">📦</span>البضاعة</button>
+  <button class="tab" data-go="more"><span class="i">📊</span>الحسابات</button>
+</nav>
+<div id="sheetRoot"></div>
+
+<script>
+'use strict';
+// ---------- Data ----------
+const KEY = 'clientpro-shop-v1';
+const blank = () => ({ v: 1, settings: { name: '', currency: 'ج.م', lastBackup: null },
+  products: [], customers: [], sales: [], payments: [], expenses: [], purchases: [], seq: 1 });
+let db = load();
+
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.v === 1) return Object.assign(blank(), d); } catch (e) {}
+  return blank();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch (e) { toast('مش قادر يحفظ على الجهاز. اقفل الوضع الخاص (Private) في سفاري.'); }
+}
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const r2 = v => Math.round((+v || 0) * 100) / 100;
+const num = v => { const s = String(v ?? '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫,]/g, '.'); const n = parseFloat(s); return isFinite(n) ? n : 0; };
+const fmt = v => r2(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const money = v => `<span class="num">${fmt(v)}</span> ${esc(db.settings.currency)}`;
+const moneyTxt = v => `${fmt(v)} ${db.settings.currency}`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dayKey = d => { d = new Date(d); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const fdate = d => new Date(d).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+const fday = d => new Date(d).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
+const ftime = d => new Date(d).toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' });
+
+const product = id => db.products.find(p => p.id === id);
+const customer = id => db.customers.find(c => c.id === id);
+const subtotal = s => s.items.reduce((a, i) => a + i.qty * i.price, 0);
+const saleTotal = s => r2(Math.max(0, subtotal(s) - (s.discount || 0)));
+const saleCost = s => s.items.reduce((a, i) => a + i.qty * (i.cost || 0), 0);
+const saleProfit = s => r2(saleTotal(s) - saleCost(s));
+const balanceOf = cid => r2(
+  db.sales.filter(s => s.customerId === cid && s.type === 'credit').reduce((a, s) => a + saleTotal(s) - (s.paid || 0), 0)
+  - db.payments.filter(p => p.customerId === cid).reduce((a, p) => a + p.amount, 0));
+const stockValue = () => db.products.reduce((a, p) => a + Math.max(0, p.qty) * p.cost, 0);
+const stockAtPrice = () => db.products.reduce((a, p) => a + Math.max(0, p.qty) * p.price, 0);
+const owedTotal = () => db.customers.reduce((a, c) => a + Math.max(0, balanceOf(c.id)), 0);
+
+const EXP = [
+  ['إيجار', '🏠'], ['كهرباء', '💡'], ['مياه', '🚰'], ['عمالة', '👷'], ['مرتبات', '👥'],
+  ['مصاريف شخصية', '🙋'], ['نقل وشحن', '🚚'], ['صيانة', '🔧'], ['إنترنت وتليفون', '📶'], ['أخرى', '🧾'],
+];
+const expIcon = cat => (EXP.find(e => e[0] === cat) || [0, '🧾'])[1];
+
+function period(kind) {
+  const now = new Date(), t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(t); end.setDate(end.getDate() + 1);
+  switch (kind) {
+    case 'today': return [t, end, 'النهارده'];
+    case 'week': { const s = new Date(t); s.setDate(s.getDate() - 6); return [s, end, 'آخر ٧ أيام']; }
+    case 'month': return [new Date(now.getFullYear(), now.getMonth(), 1), end, 'الشهر ده'];
+    case 'last': return [new Date(now.getFullYear(), now.getMonth() - 1, 1), new Date(now.getFullYear(), now.getMonth(), 1), 'الشهر اللي فات'];
+    default: return [new Date(2000, 0, 1), end, 'كل الفترات'];
+  }
+}
+const inRange = (d, [a, b]) => { d = new Date(d); return d >= a && d < b; };
+
+function summary(range) {
+  const sales = db.sales.filter(s => inRange(s.date, range));
+  const cash = sales.filter(s => s.type === 'cash').reduce((a, s) => a + saleTotal(s), 0);
+  const credit = sales.filter(s => s.type === 'credit').reduce((a, s) => a + saleTotal(s), 0);
+  const profit = sales.reduce((a, s) => a + saleProfit(s), 0);
+  const cost = sales.reduce((a, s) => a + saleCost(s), 0);
+  const discounts = sales.reduce((a, s) => a + (s.discount || 0), 0);
+  const expenses = db.expenses.filter(e => inRange(e.date, range)).reduce((a, e) => a + e.amount, 0);
+  const collected = db.payments.filter(p => inRange(p.date, range)).reduce((a, p) => a + p.amount, 0)
+    + sales.filter(s => s.type === 'credit').reduce((a, s) => a + (s.paid || 0), 0);
+  const purchases = db.purchases.filter(p => inRange(p.date, range)).reduce((a, p) => a + p.qty * p.cost, 0);
+  return { count: sales.length, cash, credit, total: cash + credit, profit, cost, discounts, expenses, net: profit - expenses, collected, purchases, cashIn: cash + collected };
+}
+
+// ---------- UI helpers ----------
+const $ = s => document.querySelector(s);
+const view = $('#view');
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; t.setAttribute('role', 'status');
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
+}
+function sheet(html, onMount) {
+  const root = $('#sheetRoot');
+  root.innerHTML = `<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  const back = root.firstElementChild;
+  back.addEventListener('click', e => { if (e.target === back) closeSheet(); });
+  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeSheet));
+  onMount && onMount(root.querySelector('.sheet'));
+  const first = root.querySelector('input,select'); if (first) setTimeout(() => first.focus(), 60);
+}
+const closeSheet = () => { $('#sheetRoot').innerHTML = ''; };
+function ask(title, msg, yes, onYes, danger = true) {
+  sheet(`<h3>${esc(title)}</h3><p class="muted">${esc(msg)}</p>
+    <div class="grid2"><button class="btn ghost" data-close>إلغاء</button><button class="btn ${danger ? 'danger' : ''}" id="yes">${esc(yes)}</button></div>`,
+    s => s.querySelector('#yes').onclick = () => { closeSheet(); onYes(); });
+}
+function go(route) { if (location.hash !== '#' + route) location.hash = route; else render(); }
+const empty = (icon, text, btn = '', act = '') => `<div class="empty"><div class="i">${icon}</div><p>${text}</p>${btn ? `<button class="btn" data-act="${act}">${btn}</button>` : ''}</div>`;
+
+// ---------- Screens ----------
+const screens = {};
+
+screens.home = () => {
+  const t = summary(period('today')), m = summary(period('month'));
+  const backupOld = !db.settings.lastBackup || Date.now() - db.settings.lastBackup > 7 * 864e5;
+  const low = db.products.filter(p => p.qty <= (p.low ?? 3));
+  return `
+  ${!db.settings.name ? `<div class="card no-print"><h2>أهلاً بيك 👋</h2>
+    <p class="muted">اكتب اسم المحل وابدأ. أو جرّب الأول ببيانات تجريبية وبعدين امسحها من الإعدادات.</p>
+    <div class="stack"><input class="in" id="shopName" placeholder="اسم المحل"><div class="grid2">
+    <button class="btn" data-act="saveName">ابدأ</button><button class="btn soft" data-act="demo">بيانات تجريبية</button></div></div></div>` : ''}
+  <div class="stats">
+    <div class="stat hero"><div class="label">ربحك النهارده (بعد المصاريف)</div><div class="value">${money(t.net)}</div>
+      <div class="label">مبيعات ${moneyTxt(t.total)} • ${t.count} عملية</div></div>
+    <div class="stat good"><div class="label">بيع كاش النهارده</div><div class="value">${money(t.cash)}</div></div>
+    <div class="stat warn"><div class="label">بيع آجل النهارده</div><div class="value">${money(t.credit)}</div></div>
+    <div class="stat"><div class="label">ربح الشهر</div><div class="value">${money(m.net)}</div></div>
+    <div class="stat warn"><div class="label">ليك عند الناس (آجل)</div><div class="value">${money(owedTotal())}</div></div>
+  </div>
+  <div class="tiles">
+    <button class="tile main" data-go="sell"><span class="i">🛒</span><div><b>بيع جديد</b><br><span>كاش أو آجل، مع خصم</span></div></button>
+    <button class="tile" data-act="payment"><span class="i">💵</span><b>استلمت فلوس</b><span>دفعة من عميل آجل</span></button>
+    <button class="tile" data-act="expense"><span class="i">🧾</span><b>صرفت</b><span>إيجار، عمالة، شخصي...</span></button>
+    <button class="tile" data-act="restock"><span class="i">🚚</span><b>بضاعة وصلت</b><span>زوّد المخزون</span></button>
+    <button class="tile" data-go="reports"><span class="i">🖨️</span><b>التقارير</b><span>اطبع أو شارك</span></button>
+  </div>
+  <div class="card"><div class="row"><div class="grow"><h2 style="margin:0">بضاعة المحل</h2>
+    <div class="muted">بسعر الشراء</div></div><div class="big">${money(stockValue())}</div></div>
+    ${low.length ? `<p class="muted">⚠️ قرب يخلص: ${low.slice(0, 5).map(p => esc(p.name)).join('، ')}</p>` : ''}</div>
+  ${backupOld && db.sales.length ? `<div class="card no-print"><div class="row"><div class="grow"><b>خد نسخة احتياطية</b>
+    <div class="muted">البيانات محفوظة على الجهاز ده بس. احفظ نسخة كل أسبوع.</div></div>
+    <button class="btn soft" data-act="backup">احفظ</button></div></div>` : ''}
+  ${recentSales(6)}`;
+};
+
+function recentSales(n) {
+  const list = [...db.sales].sort((a, b) => b.date.localeCompare(a.date)).slice(0, n);
+  if (!list.length) return '';
+  return `<div class="card"><h2>آخر المبيعات</h2><div class="list">${list.map(saleItem).join('')}</div></div>`;
+}
+const saleItem = s => {
+  const c = customer(s.customerId);
+  return `<div class="item" data-sale="${s.id}"><div class="dot">${s.type === 'cash' ? '💵' : '📒'}</div>
+    <div class="grow"><div class="t">${esc(s.items.map(i => (i.qty > 1 ? fmt(i.qty) + '× ' : '') + i.name).join('، '))}</div>
+    <div class="s">${fday(s.date)} ${ftime(s.date)}${c ? ' • ' + esc(c.name) : ''}${s.discount ? ' • خصم ' + moneyTxt(s.discount) : ''}</div></div>
+    <div><div class="amt">${money(saleTotal(s))}</div><span class="pill ${s.type === 'cash' ? 'good' : 'warn'}">${s.type === 'cash' ? 'كاش' : 'آجل'}</span></div></div>`;
+};
+
+// --- Sell ---
+let cart = null;
+const newCart = () => ({ lines: [], type: 'cash', customerId: '', discMode: 'amount', discInput: 0, paid: 0, q: '' });
+const cartSub = () => cart.lines.reduce((a, l) => a + l.qty * l.price, 0);
+const cartDisc = () => r2(cart.discMode === 'pct' ? cartSub() * Math.min(100, cart.discInput) / 100 : Math.min(cart.discInput, cartSub()));
+const cartTotal = () => r2(Math.max(0, cartSub() - cartDisc()));
+const cartCost = () => cart.lines.reduce((a, l) => a + l.qty * l.cost, 0);
+
+screens.sell = () => {
+  cart = cart || newCart();
+  const c = customer(cart.customerId);
+  return `
+  <div class="seg cash"><button class="c ${cart.type === 'cash' ? 'on' : ''}" data-type="cash">💵 بيع كاش</button>
+    <button class="d ${cart.type === 'credit' ? 'on' : ''}" data-type="credit">📒 بيع آجل</button></div>
+  ${cart.type === 'credit' ? `<button class="card item" data-act="pickCustomer" style="width:100%;text-align:start">
+    <div class="dot">👤</div><div class="grow"><div class="t">${c ? esc(c.name) : 'اختار العميل'}</div>
+    <div class="s">${c ? 'عليه دلوقتي ' + moneyTxt(balanceOf(c.id)) : 'البيع الآجل لازم يكون على اسم عميل'}</div></div><span>‹</span></button>` : ''}
+  <input class="in" id="q" placeholder="🔍 دوّر على صنف" value="${esc(cart.q)}" autocomplete="off">
+  <div id="prodGrid">${prodGrid()}</div>
+  ${cart.lines.length ? `<div class="card"><h2>الفاتورة</h2>
+    ${cart.lines.map((l, i) => `<div class="cart-line"><div><b>${esc(l.name)}</b><div class="muted">${money(l.price)} للقطعة</div></div>
+      <div class="qty"><button data-minus="${i}" aria-label="أقل">−</button><span class="num" style="min-width:24px;text-align:center">${fmt(l.qty)}</span><button data-plus="${i}" aria-label="أكتر">+</button></div>
+      <b class="num">${fmt(l.qty * l.price)}</b></div>`).join('')}
+    <div class="sumrow" style="margin-top:8px"><span>الإجمالي</span><span>${money(cartSub())}</span></div>
+    <div class="stack" style="margin-top:10px">
+      <div class="row"><input class="in grow" id="disc" inputmode="decimal" placeholder="${cart.discMode === 'pct' ? 'نسبة الخصم ٪' : 'قيمة الخصم بالجنيه'}" value="${cart.discInput || ''}">
+        <div class="seg" style="width:120px"><button data-disc="amount" class="${cart.discMode === 'amount' ? 'on' : ''}">جنيه</button><button data-disc="pct" class="${cart.discMode === 'pct' ? 'on' : ''}">٪</button></div></div>
+      <div class="chips">${[5, 10, 15, 20].map(p => `<button class="chip" data-pct="${p}">${p}٪</button>`).join('')}<button class="chip" data-pct="0">بدون خصم</button></div>
+    </div>
+    <div id="sums"></div>
+    ${cart.type === 'credit' ? `<label class="f" style="margin-top:10px">دفع كام دلوقتي؟ (اختياري)<input class="in" id="paid" inputmode="decimal" value="${cart.paid || ''}" placeholder="0"></label>` : ''}
+  </div>
+  <div class="paybar"><div class="inner"><div class="grow"><div class="muted">المطلوب</div><div class="big" id="payTotal">${money(cartTotal())}</div></div>
+    <button class="btn ${cart.type === 'cash' ? 'good' : 'warn'}" data-act="finish" style="min-width:150px">${cart.type === 'cash' ? 'تم البيع كاش' : 'سجّل على الحساب'}</button></div></div>
+  <div style="height:80px"></div>` : ''}`;
+};
+function prodGrid() {
+  const q = cart.q.trim();
+  const prods = db.products.filter(p => !q || p.name.includes(q) || (p.code || '').includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  if (!db.products.length) return empty('📦', 'ضيف أصناف المحل الأول بسعر الشراء وسعر البيع', 'إضافة صنف', 'newProduct');
+  return `<div class="products">${prods.map(p => `<button class="prod ${p.qty <= 0 ? 'out' : ''}" data-add="${p.id}">
+    <b>${esc(p.name)}</b><span>${money(p.price)}</span><span>${p.qty <= 0 ? 'خلص' : 'متاح ' + fmt(p.qty)}</span></button>`).join('')}
+    <button class="prod" data-act="freeItem"><b>+ صنف حر</b><span>مش متسجل</span></button></div>`;
+}
+function drawSums() {
+  const el = $('#sums'); if (!el) return;
+  const d = cartDisc(), t = cartTotal(), profit = t - cartCost();
+  el.innerHTML = `${d ? `<div class="sumrow"><span>الخصم${cart.discMode === 'pct' ? ` (${fmt(cart.discInput)}٪)` : ''}</span><span style="color:var(--bad)">− ${money(d)}</span></div>` : ''}
+    <div class="sumrow total"><span>الصافي</span><span>${money(t)}</span></div>
+    <div class="sumrow muted"><span>ربحك من البيعة دي</span><span>${money(profit)}</span></div>
+    ${cart.type === 'credit' ? `<div class="sumrow"><span>هيتسجل عليه</span><b style="color:var(--warn)">${money(Math.max(0, t - Math.min(cart.paid, t)))}</b></div>` : ''}`;
+  const pt = $('#payTotal'); if (pt) pt.innerHTML = money(t);
+}
+function addToCart(p) {
+  const l = cart.lines.find(x => x.pid === p.id);
+  const inCart = l ? l.qty : 0;
+  if (p.qty - inCart <= 0) toast(`تنبيه: ${p.name} خلص من المخزون`);
+  if (l) l.qty++; else cart.lines.push({ pid: p.id, name: p.name, price: p.price, cost: p.cost, qty: 1 });
+  render();
+}
+function finishSale() {
+  if (!cart.lines.length) return toast('ضيف صنف الأول');
+  if (cart.type === 'credit' && !customer(cart.customerId)) return toast('اختار العميل الأول');
+  const s = { id: uid(), no: db.seq++, date: new Date().toISOString(), type: cart.type,
+    customerId: cart.type === 'credit' ? cart.customerId : (cart.customerId || ''),
+    items: cart.lines.map(l => ({ pid: l.pid, name: l.name, qty: l.qty, price: l.price, cost: l.cost })),
+    discount: cartDisc(), discMode: cart.discMode, discInput: cart.discInput };
+  s.paid = s.type === 'credit' ? r2(Math.min(cart.paid, saleTotal(s))) : saleTotal(s);
+  s.items.forEach(i => { const p = product(i.pid); if (p) p.qty = r2(p.qty - i.qty); });
+  db.sales.push(s); save();
+  const msg = s.type === 'cash' ? `اتباع كاش ${moneyTxt(saleTotal(s))} ✅` : `اتسجل على ${customer(s.customerId).name} ✅`;
+  cart = newCart(); toast(msg); go('home');
+}
+
+// --- Customers / credit ---
+screens.customers = () => {
+  const list = db.customers.map(c => ({ c, b: balanceOf(c.id) })).sort((a, b) => b.b - a.b || a.c.name.localeCompare(b.c.name, 'ar'));
+  const total = owedTotal();
+  return `
+  <div class="stats"><div class="stat hero"><div class="label">إجمالي الآجل اللي عند الناس</div><div class="value">${money(total)}</div>
+    <div class="label">${list.filter(x => x.b > 0).length} عميل عليهم فلوس</div></div></div>
+  <div class="grid2"><button class="btn" data-act="payment">💵 استلمت دفعة</button><button class="btn soft" data-act="newCustomer">+ عميل جديد</button></div>
+  <div class="card">${list.length ? `<div class="list">${list.map(({ c, b }) => `<div class="item" data-cust="${c.id}"><div class="dot">👤</div>
+    <div class="grow"><div class="t">${esc(c.name)}</div><div class="s">${esc(c.phone || '')}</div></div>
+    ${b > 0 ? `<div class="amt" style="color:var(--warn)">${money(b)}</div>` : `<span class="pill good">مسدد</span>`}</div>`).join('')}</div>`
+    : empty('📒', 'لما تبيع آجل لعميل هيظهر هنا بحسابه', 'إضافة عميل', 'newCustomer')}</div>`;
+};
+
+function statement(cid) {
+  const rows = [];
+  db.sales.filter(s => s.customerId === cid && s.type === 'credit').forEach(s => {
+    rows.push({ date: s.date, t: `سحب بضاعة #${s.no}`, debit: saleTotal(s), credit: 0, sale: s.id });
+    if (s.paid > 0) rows.push({ date: s.date, t: 'دفع وقت السحب', debit: 0, credit: s.paid });
+  });
+  db.payments.filter(p => p.customerId === cid).forEach(p => rows.push({ date: p.date, t: p.note ? 'دفعة: ' + p.note : 'دفعة', debit: 0, credit: p.amount, pay: p.id }));
+  rows.sort((a, b) => a.date.localeCompare(b.date) || b.debit - a.debit);
+  let bal = 0; rows.forEach(r => { bal = r2(bal + r.debit - r.credit); r.bal = bal; });
+  return rows;
+}
+
+screens.customer = id => {
+  const c = customer(id); if (!c) return empty('👤', 'العميل ده اتمسح');
+  const b = balanceOf(id), rows = statement(id);
+  const took = rows.reduce((a, r) => a + r.debit, 0), paid = rows.reduce((a, r) => a + r.credit, 0);
+  return `
+  <div class="card" style="text-align:center"><div class="muted">${b > 0 ? 'عليه' : 'الحساب مسدد ✅'}</div>
+    <div class="big" style="font-size:34px;color:${b > 0 ? 'var(--warn)' : 'var(--good)'}">${money(Math.max(0, b))}</div>
+    <div class="muted">سحب ${moneyTxt(took)} • دفع ${moneyTxt(paid)}</div>
+    ${c.phone ? `<div class="muted num" style="margin-top:4px">📞 ${esc(c.phone)}</div>` : ''}</div>
+  <div class="grid2 no-print"><button class="btn" data-act="payFor" data-id="${id}" ${b > 0 ? '' : 'disabled'}>💵 دفع جزء / الكل</button>
+    <button class="btn soft" data-act="sellTo" data-id="${id}">🛒 سحب جديد</button></div>
+  ${c.phone && b > 0 ? `<a class="btn ghost block no-print" style="text-align:center;text-decoration:none;display:block" target="_blank" rel="noopener"
+    href="https://wa.me/${waNum(c.phone)}?text=${encodeURIComponent(`أهلاً ${c.name}، حسابك عندنا ${moneyTxt(b)}.${db.settings.name ? ' — ' + db.settings.name : ''}`)}">💬 فكّره على واتساب</a>` : ''}
+  <div class="card"><h2>كشف الحساب</h2>${rows.length ? `<div class="list">${[...rows].reverse().map(r => `<div class="item" ${r.pay ? `data-delpay="${r.pay}"` : r.sale ? `data-sale="${r.sale}"` : ''}>
+    <div class="dot">${r.credit ? '💵' : '🛍️'}</div><div class="grow"><div class="t">${esc(r.t)}</div><div class="s">${fdate(r.date)} • الرصيد بعدها ${moneyTxt(r.bal)}</div></div>
+    <div class="amt" style="color:${r.credit ? 'var(--good)' : 'var(--warn)'}">${r.credit ? '−' : '+'} ${money(r.credit || r.debit)}</div></div>`).join('')}</div>`
+    : '<p class="muted">لسه مفيش حركات</p>'}</div>
+  <div class="grid2 no-print"><button class="btn ghost" data-act="editCustomer" data-id="${id}">تعديل البيانات</button>
+    <button class="btn danger" data-act="delCustomer" data-id="${id}">حذف العميل</button></div>`;
+};
+const waNum = p => { let d = String(p).replace(/[٠-٩]/g, x => '٠١٢٣٤٥٦٧٨٩'.indexOf(x)).replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); else if (d.startsWith('0')) d = '20' + d.slice(1); return d; };
+
+// --- Products ---
+screens.products = () => {
+  const list = [...db.products].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  return `
+  <div class="stats">
+    <div class="stat hero"><div class="label">بضاعة المحل بسعر الشراء</div><div class="value">${money(stockValue())}</div>
+      <div class="label">بسعر البيع ${moneyTxt(stockAtPrice())} • ربح متوقع ${moneyTxt(stockAtPrice() - stockValue())}</div></div></div>
+  <div class="grid2"><button class="btn" data-act="newProduct">+ صنف جديد</button><button class="btn soft" data-act="restock">🚚 بضاعة وصلت</button></div>
+  <div class="card">${list.length ? `<div class="list">${list.map(p => `<div class="item" data-prod="${p.id}"><div class="dot">📦</div>
+    <div class="grow"><div class="t">${esc(p.name)}</div><div class="s">شراء ${moneyTxt(p.cost)} • بيع ${moneyTxt(p.price)} • ربح ${moneyTxt(p.price - p.cost)}</div></div>
+    <div style="text-align:end"><div class="amt num">${fmt(p.qty)}</div><span class="pill ${p.qty <= 0 ? 'bad' : p.qty <= (p.low ?? 3) ? 'warn' : 'good'}">${p.qty <= 0 ? 'خلص' : p.qty <= (p.low ?? 3) ? 'قرب يخلص' : 'متاح'}</span></div></div>`).join('')}</div>`
+    : empty('📦', 'ضيف أصنافك: الاسم وسعر الشراء وسعر البيع والكمية', 'إضافة صنف', 'newProduct')}</div>`;
+};
+
+// --- Money / more ---
+screens.more = () => {
+  const m = summary(period('month'));
+  const exp = [...db.expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
+  return `
+  <div class="stats">
+    <div class="stat hero"><div class="label">صافي ربح الشهر</div><div class="value">${money(m.net)}</div>
+      <div class="label">ربح البيع ${moneyTxt(m.profit)} − المصاريف ${moneyTxt(m.expenses)}</div></div>
+    <div class="stat good"><div class="label">بيع كاش</div><div class="value">${money(m.cash)}</div></div>
+    <div class="stat warn"><div class="label">بيع آجل</div><div class="value">${money(m.credit)}</div></div>
+    <div class="stat"><div class="label">الخصومات</div><div class="value">${money(m.discounts)}</div></div>
+    <div class="stat bad"><div class="label">المصاريف</div><div class="value">${money(m.expenses)}</div></div>
+  </div>
+  <div class="grid2"><button class="btn" data-act="expense">🧾 مصروف جديد</button><button class="btn soft" data-go="reports">🖨️ التقارير</button></div>
+  <div class="card"><h2>المصاريف</h2>${exp.length ? `<div class="list">${exp.map(e => `<div class="item" data-exp="${e.id}"><div class="dot">${expIcon(e.cat)}</div>
+    <div class="grow"><div class="t">${esc(e.cat)}${e.note ? ' — ' + esc(e.note) : ''}</div><div class="s">${fdate(e.date)}</div></div>
+    <div class="amt" style="color:var(--bad)">${money(e.amount)}</div></div>`).join('')}</div>` : '<p class="muted">مفيش مصاريف متسجلة</p>'}</div>`;
+};
+
+// --- Reports ---
+let rep = { kind: 'sales', period: 'month' };
+screens.reports = () => {
+  const range = period(rep.period);
+  const head = `<div class="print-only"><h2 style="margin:0">${esc(db.settings.name || 'ClientPro')}</h2>
+    <div>${esc(repTitle())} — ${range[2]} — اتطبع ${fdate(new Date())}</div><hr></div>`;
+  return `
+  <div class="no-print stack">
+    <div class="chips">${[['sales', 'البيع والأرباح'], ['daily', 'الأرباح اليومية'], ['customers', 'العملاء والآجل'], ['stock', 'المخزون والبضاعة']]
+      .map(([k, t]) => `<button class="chip ${rep.kind === k ? 'on' : ''}" data-rk="${k}">${t}</button>`).join('')}</div>
+    ${['sales', 'daily'].includes(rep.kind) ? `<div class="chips">${[['today', 'النهارده'], ['week', '٧ أيام'], ['month', 'الشهر ده'], ['last', 'الشهر اللي فات'], ['all', 'الكل']]
+      .map(([k, t]) => `<button class="chip ${rep.period === k ? 'on' : ''}" data-rp="${k}">${t}</button>`).join('')}</div>` : ''}
+    <button class="btn block" data-act="print">🖨️ اطبع / احفظ PDF</button>
+  </div>
+  ${head}${reportBody(range)}`;
+};
+const repTitle = () => ({ sales: 'تقرير البيع والشراء والأرباح', daily: 'تقرير الأرباح اليومية', customers: 'تقرير العملاء والآجل', stock: 'تقرير المخزون وقيمة البضاعة' })[rep.kind];
+const tbl = (head, rows, foot) => rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>${foot ? `<tfoot><tr>${foot.map(c => `<td>${c}</td>`).join('')}</tr></tfoot>` : ''}</table></div>` : '<p class="muted">لا يوجد بيانات</p>';
+
+function daily(range) {
+  const days = {};
+  const d = k => days[k] = days[k] || { k, sales: 0, cash: 0, credit: 0, profit: 0, exp: 0, disc: 0 };
+  db.sales.filter(s => inRange(s.date, range)).forEach(s => { const x = d(dayKey(s.date)); const t = saleTotal(s);
+    x.sales += t; x[s.type] += t; x.profit += saleProfit(s); x.disc += s.discount || 0; });
+  db.expenses.filter(e => inRange(e.date, range)).forEach(e => d(dayKey(e.date)).exp += e.amount);
+  return Object.values(days).sort((a, b) => b.k.localeCompare(a.k));
+}
+function reportBody(range) {
+  const m = v => `${fmt(v)}`;
+  if (rep.kind === 'sales' || rep.kind === 'daily') {
+    const s = summary(range), days = daily(range);
+    const dayTable = tbl(['اليوم', 'كاش', 'آجل', 'خصم', 'ربح البيع', 'مصاريف', 'الصافي'],
+      days.map(x => [fday(x.k + 'T12:00'), m(x.cash), m(x.credit), m(x.disc), m(x.profit), m(x.exp), `<b>${m(x.profit - x.exp)}</b>`]),
+      ['الإجمالي', m(s.cash), m(s.credit), m(s.discounts), m(s.profit), m(s.expenses), m(s.net)]);
+    const stats = `<div class="stats">
+      <div class="stat hero"><div class="label">صافي الربح — ${range[2]}</div><div class="value">${money(s.net)}</div></div>
+      <div class="stat"><div class="label">إجمالي المبيعات</div><div class="value">${money(s.total)}</div></div>
+      <div class="stat"><div class="label">ربح البيع (بعد التكلفة)</div><div class="value">${money(s.profit)}</div></div>
+      <div class="stat good"><div class="label">بيع كاش</div><div class="value">${money(s.cash)}</div></div>
+      <div class="stat warn"><div class="label">بيع آجل</div><div class="value">${money(s.credit)}</div></div>
+      <div class="stat"><div class="label">الخصومات</div><div class="value">${money(s.discounts)}</div></div>
+      <div class="stat bad"><div class="label">المصاريف</div><div class="value">${money(s.expenses)}</div></div>
+      <div class="stat"><div class="label">اتحصّل من الآجل</div><div class="value">${money(s.collected)}</div></div>
+      <div class="stat"><div class="label">مشتريات بضاعة</div><div class="value">${money(s.purchases)}</div></div></div>`;
+    if (rep.kind === 'daily') return `${stats}<div class="card"><h2>الأرباح يوم بيوم</h2>${dayTable}</div>`;
+    const sales = db.sales.filter(x => inRange(x.date, range)).sort((a, b) => b.date.localeCompare(a.date));
+    const buys = db.purchases.filter(x => inRange(x.date, range)).sort((a, b) => b.date.localeCompare(a.date));
+    const byCat = {}; db.expenses.filter(e => inRange(e.date, range)).forEach(e => byCat[e.cat] = (byCat[e.cat] || 0) + e.amount);
+    return `${stats}
+      <div class="card"><h2>الأرباح يوم بيوم</h2>${dayTable}</div>
+      <div class="card"><h2>المبيعات</h2>${tbl(['التاريخ', '#', 'النوع', 'العميل', 'الأصناف', 'خصم', 'الصافي', 'الربح'],
+        sales.map(x => [fdate(x.date), x.no, x.type === 'cash' ? 'كاش' : 'آجل', esc(customer(x.customerId)?.name || ''),
+          esc(x.items.map(i => fmt(i.qty) + '× ' + i.name).join('، ')), x.discount ? m(x.discount) : '', m(saleTotal(x)), m(saleProfit(x))]),
+        ['الإجمالي', '', '', '', '', m(s.discounts), m(s.total), m(s.profit)])}</div>
+      <div class="card"><h2>المشتريات (بضاعة وصلت)</h2>${tbl(['التاريخ', 'الصنف', 'المورد', 'الكمية', 'سعر الشراء', 'الإجمالي'],
+        buys.map(x => [fdate(x.date), esc(x.name), esc(x.supplier || ''), fmt(x.qty), m(x.cost), m(x.qty * x.cost)]), ['الإجمالي', '', '', '', '', m(s.purchases)])}</div>
+      <div class="card"><h2>المصاريف حسب النوع</h2>${tbl(['النوع', 'المبلغ'], Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => [esc(k), m(v)]), ['الإجمالي', m(s.expenses)])}</div>`;
+  }
+  if (rep.kind === 'customers') {
+    const rows = db.customers.map(c => { const st = statement(c.id); return { c, b: balanceOf(c.id), took: st.reduce((a, r) => a + r.debit, 0), paid: st.reduce((a, r) => a + r.credit, 0), last: st.length ? st[st.length - 1].date : '' }; })
+      .sort((a, b) => b.b - a.b);
+    const sum = k => rows.reduce((a, r) => a + r[k], 0);
+    return `<div class="stats"><div class="stat hero"><div class="label">إجمالي الآجل عند العملاء</div><div class="value">${money(owedTotal())}</div></div>
+      <div class="stat"><div class="label">عدد العملاء</div><div class="value num">${rows.length}</div></div>
+      <div class="stat warn"><div class="label">عليهم فلوس</div><div class="value num">${rows.filter(r => r.b > 0).length}</div></div></div>
+      <div class="card"><h2>حسابات العملاء</h2>${tbl(['العميل', 'التليفون', 'سحب', 'دفع', 'الباقي عليه', 'آخر حركة'],
+        rows.map(r => [esc(r.c.name), `<span class="num">${esc(r.c.phone || '')}</span>`, m(r.took), m(r.paid), r.b > 0 ? `<b>${m(r.b)}</b>` : 'مسدد', r.last ? fdate(r.last) : '']),
+        ['الإجمالي', '', m(sum('took')), m(sum('paid')), m(owedTotal()), ''])}</div>`;
+  }
+  const items = [...db.products].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const low = items.filter(p => p.qty <= (p.low ?? 3));
+  return `<div class="stats"><div class="stat hero"><div class="label">بضاعة المحل بسعر الشراء</div><div class="value">${money(stockValue())}</div></div>
+    <div class="stat"><div class="label">بسعر البيع</div><div class="value">${money(stockAtPrice())}</div></div>
+    <div class="stat good"><div class="label">الربح المتوقع</div><div class="value">${money(stockAtPrice() - stockValue())}</div></div></div>
+    <div class="card"><h2>المخزون</h2>${tbl(['الصنف', 'الكمية', 'سعر الشراء', 'سعر البيع', 'القيمة بالشراء', 'القيمة بالبيع'],
+      items.map(p => [esc(p.name), fmt(p.qty), m(p.cost), m(p.price), m(Math.max(0, p.qty) * p.cost), m(Math.max(0, p.qty) * p.price)]),
+      ['الإجمالي', fmt(items.reduce((a, p) => a + Math.max(0, p.qty), 0)), '', '', m(stockValue()), m(stockAtPrice())])}</div>
+    ${low.length ? `<div class="card"><h2>محتاج تطلب</h2>${tbl(['الصنف', 'الموجود'], low.map(p => [esc(p.name), fmt(p.qty)]))}</div>` : ''}`;
+}
+
+// --- Settings ---
+screens.settings = () => `
+  <div class="card stack"><h2>المحل</h2>
+    <label class="f">اسم المحل<input class="in" id="setName" value="${esc(db.settings.name)}"></label>
+    <label class="f">العملة<input class="in" id="setCur" value="${esc(db.settings.currency)}"></label>
+    <button class="btn" data-act="saveSettings">حفظ</button></div>
+  <div class="card stack"><h2>النسخ الاحتياطي</h2>
+    <p class="muted">البيانات محفوظة على الجهاز ده بس. احفظ نسخة كل أسبوع في الملفات أو ابعتها لنفسك على واتساب، وتقدر ترجعها على أي جهاز.
+    ${db.settings.lastBackup ? '<br>آخر نسخة: ' + fdate(db.settings.lastBackup) : ''}</p>
+    <div class="grid2"><button class="btn" data-act="backup">💾 احفظ نسخة</button><button class="btn soft" data-act="restore">📂 رجّع نسخة</button></div>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden></div>
+  <div class="card stack"><h2>على الآيفون</h2>
+    <p class="muted">من سفاري دوس زرار المشاركة ⬆️ ← "إضافة إلى الشاشة الرئيسية". كده التطبيق يفتح زي أي برنامج، وسفاري ما يمسحش بياناته.</p></div>
+  <div class="card stack"><h2>مسح</h2><button class="btn danger" data-act="wipe">مسح كل البيانات</button></div>`;
+
+// ---------- Sheets (forms) ----------
+function productSheet(p) {
+  const isNew = !p; p = p || { name: '', cost: 0, price: 0, qty: 0, low: 3, code: '' };
+  sheet(`<h3>${isNew ? 'صنف جديد' : 'تعديل الصنف'}</h3><div class="stack">
+    <label class="f">اسم الصنف<input class="in" id="pName" value="${esc(p.name)}"></label>
+    <div class="grid2"><label class="f">سعر الشراء<input class="in" id="pCost" inputmode="decimal" value="${p.cost || ''}"></label>
+    <label class="f">سعر البيع<input class="in" id="pPrice" inputmode="decimal" value="${p.price || ''}"></label></div>
+    <p class="muted" id="pMargin"></p>
+    <div class="grid2"><label class="f">الكمية الموجودة<input class="in" id="pQty" inputmode="decimal" value="${p.qty || ''}"></label>
+    <label class="f">نبهني لما يوصل<input class="in" id="pLow" inputmode="decimal" value="${p.low ?? 3}"></label></div>
+    <label class="f">كود (اختياري)<input class="in" id="pCode" value="${esc(p.code || '')}"></label>
+    <button class="btn" id="pSave">حفظ</button>
+    ${isNew ? '' : '<button class="btn danger" id="pDel">حذف الصنف</button>'}<button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    const upd = () => { const c = num(s.querySelector('#pCost').value), pr = num(s.querySelector('#pPrice').value);
+      s.querySelector('#pMargin').textContent = pr ? `ربح القطعة ${moneyTxt(pr - c)} (${fmt(c ? (pr - c) / c * 100 : 100)}٪ على الشراء)` : ''; };
+    s.querySelector('#pCost').oninput = upd; s.querySelector('#pPrice').oninput = upd; upd();
+    s.querySelector('#pSave').onclick = () => {
+      const name = s.querySelector('#pName').value.trim(); if (!name) return toast('اكتب اسم الصنف');
+      Object.assign(p, { name, cost: num(s.querySelector('#pCost').value), price: num(s.querySelector('#pPrice').value),
+        qty: num(s.querySelector('#pQty').value), low: num(s.querySelector('#pLow').value), code: s.querySelector('#pCode').value.trim() });
+      if (isNew) { p.id = uid(); db.products.push(p); }
+      save(); closeSheet(); render(); toast('اتحفظ ✅');
+    };
+    const del = s.querySelector('#pDel'); if (del) del.onclick = () => ask('حذف الصنف؟', p.name, 'حذف', () => { db.products = db.products.filter(x => x !== p); save(); render(); });
+  });
+}
+function restockSheet(pid) {
+  if (!db.products.length) return productSheet();
+  sheet(`<h3>🚚 بضاعة وصلت</h3><div class="stack">
+    <label class="f">الصنف<select class="in" id="rP">${[...db.products].sort((a, b) => a.name.localeCompare(b.name, 'ar')).map(p => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)} (متاح ${fmt(p.qty)})</option>`).join('')}</select></label>
+    <div class="grid2"><label class="f">الكمية<input class="in" id="rQ" inputmode="decimal"></label>
+    <label class="f">سعر شراء القطعة<input class="in" id="rC" inputmode="decimal"></label></div>
+    <label class="f">المورد (اختياري)<input class="in" id="rS"></label>
+    <p class="muted">لو سعر الشراء اتغير، التطبيق بيحسب متوسط التكلفة لوحده.</p>
+    <button class="btn" id="rSave">إضافة للمخزون</button><button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    const sel = s.querySelector('#rP'), cost = s.querySelector('#rC');
+    const fill = () => { cost.value = product(sel.value)?.cost || ''; }; sel.onchange = fill; fill();
+    s.querySelector('#rSave').onclick = () => {
+      const p = product(sel.value), q = num(s.querySelector('#rQ').value), c = num(cost.value);
+      if (!p || q <= 0) return toast('اكتب الكمية');
+      const old = Math.max(0, p.qty);
+      p.cost = r2((old * p.cost + q * c) / (old + q)); p.qty = r2(p.qty + q);
+      db.purchases.push({ id: uid(), date: new Date().toISOString(), pid: p.id, name: p.name, qty: q, cost: c, supplier: s.querySelector('#rS').value.trim() });
+      save(); closeSheet(); render(); toast(`اتضاف ${fmt(q)} ${p.name} ✅`);
+    };
+  });
+}
+function customerSheet(c, after) {
+  const isNew = !c; c = c || { name: '', phone: '' };
+  sheet(`<h3>${isNew ? 'عميل جديد' : 'تعديل العميل'}</h3><div class="stack">
+    <label class="f">الاسم<input class="in" id="cName" value="${esc(c.name)}"></label>
+    <label class="f">التليفون<input class="in" id="cPhone" inputmode="tel" value="${esc(c.phone)}"></label>
+    <button class="btn" id="cSave">حفظ</button><button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    s.querySelector('#cSave').onclick = () => {
+      const name = s.querySelector('#cName').value.trim(); if (!name) return toast('اكتب الاسم');
+      c.name = name; c.phone = s.querySelector('#cPhone').value.trim();
+      if (isNew) { c.id = uid(); db.customers.push(c); }
+      save(); closeSheet(); after ? after(c) : render();
+    };
+  });
+}
+function pickCustomerSheet(onPick) {
+  const list = [...db.customers].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  sheet(`<h3>اختار العميل</h3><div class="stack"><input class="in" id="cq" placeholder="🔍 دوّر بالاسم">
+    <button class="btn soft" id="cNew">+ عميل جديد</button><div class="list" id="cl"></div></div>`, s => {
+    const draw = q => s.querySelector('#cl').innerHTML = list.filter(c => !q || c.name.includes(q) || (c.phone || '').includes(q))
+      .map(c => `<div class="item" data-pick="${c.id}"><div class="dot">👤</div><div class="grow"><div class="t">${esc(c.name)}</div>
+      <div class="s">${balanceOf(c.id) > 0 ? 'عليه ' + moneyTxt(balanceOf(c.id)) : 'مسدد'}</div></div></div>`).join('') || '<p class="muted">مفيش عملاء</p>';
+    draw(''); s.querySelector('#cq').oninput = e => draw(e.target.value.trim());
+    s.querySelector('#cl').onclick = e => { const it = e.target.closest('[data-pick]'); if (it) { closeSheet(); onPick(customer(it.dataset.pick)); } };
+    s.querySelector('#cNew').onclick = () => customerSheet(null, c => onPick(c));
+  });
+}
+function paymentSheet(c) {
+  if (!c) {
+    const owing = db.customers.filter(x => balanceOf(x.id) > 0);
+    if (!owing.length) return toast('مفيش حد عليه آجل دلوقتي');
+    return pickCustomerSheet(paymentSheet);
+  }
+  const b = balanceOf(c.id);
+  sheet(`<h3>💵 دفعة من ${esc(c.name)}</h3><p class="muted">عليه ${moneyTxt(b)}</p><div class="stack">
+    <label class="f">دفع كام؟<input class="in" id="payA" inputmode="decimal" placeholder="${fmt(b)}"></label>
+    <div class="chips"><button class="chip" data-f="1">الكل</button><button class="chip" data-f="0.5">النص</button><button class="chip" data-f="0.25">الربع</button></div>
+    <label class="f">ملاحظة (اختياري)<input class="in" id="payN"></label>
+    <button class="btn good" id="paySave">سجّل الدفعة</button><button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    s.querySelectorAll('[data-f]').forEach(ch => ch.onclick = () => s.querySelector('#payA').value = r2(b * +ch.dataset.f));
+    s.querySelector('#paySave').onclick = () => {
+      const a = num(s.querySelector('#payA').value); if (a <= 0) return toast('اكتب المبلغ');
+      db.payments.push({ id: uid(), customerId: c.id, amount: r2(a), date: new Date().toISOString(), note: s.querySelector('#payN').value.trim() });
+      save(); closeSheet(); const left = balanceOf(c.id);
+      toast(left > 0 ? `اتسجل ✅ باقي عليه ${moneyTxt(left)}` : 'اتسجل ✅ الحساب اتقفل'); render();
+    };
+  });
+}
+function expenseSheet(e) {
+  const isNew = !e; e = e || { cat: '', amount: 0, note: '', date: new Date().toISOString() };
+  sheet(`<h3>${isNew ? '🧾 مصروف جديد' : 'تعديل المصروف'}</h3><div class="stack">
+    <div class="chips" id="cats">${EXP.map(([c, i]) => `<button class="chip ${e.cat === c ? 'on' : ''}" data-cat="${esc(c)}">${i} ${c}</button>`).join('')}</div>
+    <label class="f">النوع<input class="in" id="eCat" value="${esc(e.cat)}" placeholder="اختار من فوق أو اكتب"></label>
+    <label class="f">المبلغ<input class="in" id="eAmt" inputmode="decimal" value="${e.amount || ''}"></label>
+    <label class="f">ملاحظة (اختياري)<input class="in" id="eNote" value="${esc(e.note)}"></label>
+    <label class="f">التاريخ<input class="in" id="eDate" type="date" value="${dayKey(e.date)}"></label>
+    <button class="btn" id="eSave">حفظ</button>${isNew ? '' : '<button class="btn danger" id="eDel">حذف</button>'}<button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    s.querySelector('#cats').onclick = ev => { const b = ev.target.closest('[data-cat]'); if (!b) return;
+      s.querySelectorAll('[data-cat]').forEach(x => x.classList.toggle('on', x === b)); s.querySelector('#eCat').value = b.dataset.cat; s.querySelector('#eAmt').focus(); };
+    s.querySelector('#eSave').onclick = () => {
+      const amt = num(s.querySelector('#eAmt').value), cat = s.querySelector('#eCat').value.trim() || 'أخرى';
+      if (amt <= 0) return toast('اكتب المبلغ');
+      const dv = s.querySelector('#eDate').value; const d = dv ? new Date(dv + 'T' + new Date().toTimeString().slice(0, 8)) : new Date();
+      Object.assign(e, { cat, amount: r2(amt), note: s.querySelector('#eNote').value.trim(), date: d.toISOString() });
+      if (isNew) { e.id = uid(); db.expenses.push(e); }
+      save(); closeSheet(); render(); toast('اتسجل ✅');
+    };
+    const del = s.querySelector('#eDel'); if (del) del.onclick = () => ask('حذف المصروف؟', `${e.cat} ${moneyTxt(e.amount)}`, 'حذف', () => { db.expenses = db.expenses.filter(x => x !== e); save(); render(); });
+  });
+}
+function saleSheet(id) {
+  const s = db.sales.find(x => x.id === id); if (!s) return;
+  const c = customer(s.customerId);
+  sheet(`<h3>فاتورة #${s.no} — ${s.type === 'cash' ? 'كاش' : 'آجل'}</h3>
+    <p class="muted">${fday(s.date)} ${ftime(s.date)}${c ? ' • ' + esc(c.name) : ''}</p>
+    ${s.items.map(i => `<div class="sumrow"><span>${fmt(i.qty)} × ${esc(i.name)}</span><span>${money(i.qty * i.price)}</span></div>`).join('')}
+    ${s.discount ? `<div class="sumrow"><span>خصم</span><span>− ${money(s.discount)}</span></div>` : ''}
+    <div class="sumrow total"><span>الصافي</span><span>${money(saleTotal(s))}</span></div>
+    <div class="sumrow muted"><span>الربح</span><span>${money(saleProfit(s))}</span></div>
+    ${s.type === 'credit' ? `<div class="sumrow"><span>دفع وقتها</span><span>${money(s.paid || 0)}</span></div>` : ''}
+    <div class="stack" style="margin-top:12px"><button class="btn danger" id="sDel">إلغاء الفاتورة (البضاعة ترجع المخزون)</button><button class="btn ghost" data-close>قفل</button></div>`, sh => {
+    sh.querySelector('#sDel').onclick = () => ask('إلغاء الفاتورة؟', 'هتتشال من الحسابات والبضاعة ترجع المخزون', 'إلغاء الفاتورة', () => {
+      s.items.forEach(i => { const p = product(i.pid); if (p) p.qty = r2(p.qty + i.qty); });
+      db.sales = db.sales.filter(x => x !== s); save(); render(); toast('اتلغت');
+    });
+  });
+}
+function freeItemSheet() {
+  sheet(`<h3>صنف حر</h3><div class="stack"><label class="f">الاسم<input class="in" id="fN"></label>
+    <div class="grid2"><label class="f">سعر البيع<input class="in" id="fP" inputmode="decimal"></label><label class="f">التكلفة (اختياري)<input class="in" id="fC" inputmode="decimal"></label></div>
+    <button class="btn" id="fAdd">إضافة</button><button class="btn ghost" data-close>إلغاء</button></div>`, s => {
+    s.querySelector('#fAdd').onclick = () => { const n = s.querySelector('#fN').value.trim(), p = num(s.querySelector('#fP').value);
+      if (!n || p <= 0) return toast('اكتب الاسم والسعر');
+      cart.lines.push({ pid: '', name: n, price: p, cost: num(s.querySelector('#fC').value), qty: 1 }); closeSheet(); render(); };
+  });
+}
+
+// ---------- Backup ----------
+async function backup() {
+  const data = JSON.stringify({ app: 'clientpro-shop', exported: new Date().toISOString(), db }, null, 1);
+  const name = `ClientPro-نسخة-${dayKey(new Date())}.json`;
+  const file = new File([data], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); }
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+    db.settings.lastBackup = Date.now(); save(); render(); toast('اتحفظت النسخة ✅');
+  } catch (e) { if (e && e.name !== 'AbortError') toast('ما اتحفظتش. جرّب تاني'); }
+}
+function restore(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try { const d = JSON.parse(rd.result); const nd = d.db || d; if (nd.v !== 1 || !Array.isArray(nd.products)) throw 0;
+      ask('ترجيع النسخة؟', 'البيانات الحالية على الجهاز ده هتتبدل بالنسخة دي', 'رجّع', () => { db = Object.assign(blank(), nd); save(); go('home'); toast('رجعت البيانات ✅'); }, false);
+    } catch (e) { toast('الملف ده مش نسخة من ClientPro'); }
+  };
+  rd.readAsText(file);
+}
+
+// ---------- Demo ----------
+function demo() {
+  const P = (name, cost, price, qty) => ({ id: uid(), name, cost, price, qty, low: 3, code: '' });
+  db.products = [P('زيت عباد ١ لتر', 62, 75, 40), P('سكر ١ كيلو', 30, 36, 60), P('أرز ١ كيلو', 34, 42, 50), P('شاي ٢٥٠ جم', 48, 60, 18), P('مكرونة ٤٠٠ جم', 14, 18, 2), P('صابون', 12, 17, 30)];
+  db.customers = [{ id: uid(), name: 'أبو أحمد', phone: '01012345678' }, { id: uid(), name: 'محل الأمل', phone: '01198765432' }, { id: uid(), name: 'أم محمد', phone: '' }];
+  const now = Date.now(), at = (d, h) => { const x = new Date(now - d * 864e5); x.setHours(h, 15, 0, 0); return x.toISOString(); };
+  const S = (d, h, type, cust, lines, disc = 0, paid = 0) => { const s = { id: uid(), no: db.seq++, date: at(d, h), type, customerId: cust ? cust.id : '',
+    items: lines.map(([p, q]) => ({ pid: p.id, name: p.name, qty: q, price: p.price, cost: p.cost })), discount: disc, discMode: 'amount', discInput: disc };
+    s.paid = type === 'cash' ? saleTotal(s) : paid; db.sales.push(s); };
+  const [oil, sugar, rice, tea, pasta, soap] = db.products, [c1, c2, c3] = db.customers;
+  S(0, 10, 'cash', null, [[oil, 2], [sugar, 3]], 10); S(0, 13, 'credit', c1, [[rice, 5], [tea, 2]], 0, 100); S(0, 17, 'cash', null, [[soap, 4]]);
+  S(1, 11, 'cash', null, [[oil, 1], [rice, 2]]); S(1, 18, 'credit', c2, [[sugar, 10], [oil, 4]], 50, 0);
+  S(2, 12, 'cash', null, [[tea, 3], [pasta, 6]], 5); S(3, 15, 'credit', c3, [[rice, 3], [soap, 2]], 0, 50); S(5, 19, 'cash', null, [[sugar, 4], [tea, 1]]);
+  db.payments = [{ id: uid(), customerId: c2.id, amount: 300, date: at(0, 12), note: 'ربع الحساب' }];
+  db.expenses = [{ id: uid(), cat: 'إيجار', amount: 3000, note: '', date: at(6, 10) }, { id: uid(), cat: 'كهرباء', amount: 420, note: '', date: at(2, 11) },
+    { id: uid(), cat: 'عمالة', amount: 150, note: 'شيال', date: at(0, 9) }, { id: uid(), cat: 'مصاريف شخصية', amount: 100, note: '', date: at(1, 20) }];
+  db.purchases = [{ id: uid(), date: at(4, 9), pid: oil.id, name: oil.name, qty: 24, cost: 62, supplier: 'شركة النيل' }];
+  db.settings.name = db.settings.name || 'سوبر ماركت تجريبي'; save(); render(); toast('اتضافت بيانات تجريبية. امسحها من الإعدادات وقت ما تحب');
+}
+
+// ---------- Router & events ----------
+const TITLES = { home: () => db.settings.name || 'ClientPro', sell: () => 'بيع جديد', customers: () => 'حسابات الآجل', products: () => 'البضاعة والمخزون',
+  more: () => 'الحسابات والمصاريف', reports: () => 'التقارير', settings: () => 'الإعدادات', customer: id => customer(id)?.name || 'العميل' };
+function render() {
+  const [route, arg] = (location.hash.slice(1) || 'home').split('-');
+  const fn = screens[route] || screens.home;
+  view.innerHTML = `<div class="stack">${fn(arg)}</div>`;
+  $('#title').textContent = (TITLES[route] || TITLES.home)(arg);
+  const tab = route === 'customer' ? 'customers' : route === 'reports' ? 'more' : route;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.go === tab));
+  if (route === 'sell') drawSums();
+}
+window.addEventListener('hashchange', () => { closeSheet(); render(); window.scrollTo(0, 0); });
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go],[data-act],[data-add],[data-plus],[data-minus],[data-type],[data-disc],[data-pct],[data-cust],[data-prod],[data-exp],[data-sale],[data-delpay],[data-rk],[data-rp]');
+  if (!t || t.closest('.sheet')) return;
+  const d = t.dataset;
+  if (d.go) return go(d.go);
+  if (d.add) return addToCart(product(d.add));
+  if (d.plus) { cart.lines[+d.plus].qty++; return render(); }
+  if (d.minus) { const l = cart.lines[+d.minus]; if (l.qty > 1) l.qty--; else cart.lines.splice(+d.minus, 1); return render(); }
+  if (d.type) { cart.type = d.type; return render(); }
+  if (d.disc) { cart.discMode = d.disc; cart.discInput = 0; return render(); }
+  if (d.pct) { cart.discMode = 'pct'; cart.discInput = +d.pct; return render(); }
+  if (d.cust) return go('customer-' + d.cust);
+  if (d.prod) return productSheet(product(d.prod));
+  if (d.exp) return expenseSheet(db.expenses.find(x => x.id === d.exp));
+  if (d.sale) return saleSheet(d.sale);
+  if (d.delpay) { const p = db.payments.find(x => x.id === d.delpay);
+    return ask('حذف الدفعة دي؟', `${moneyTxt(p.amount)} — ${fdate(p.date)}`, 'حذف', () => { db.payments = db.payments.filter(x => x !== p); save(); render(); }); }
+  if (d.rk) { rep.kind = d.rk; return render(); }
+  if (d.rp) { rep.period = d.rp; return render(); }
+  const acts = {
+    saveName: () => { const n = $('#shopName').value.trim(); if (!n) return toast('اكتب اسم المحل'); db.settings.name = n; save(); render(); },
+    demo, backup, payment: () => paymentSheet(), expense: () => expenseSheet(), restock: () => restockSheet(), newProduct: () => productSheet(),
+    newCustomer: () => customerSheet(), freeItem: freeItemSheet, finish: finishSale, print: () => window.print(),
+    pickCustomer: () => pickCustomerSheet(c => { cart.customerId = c.id; render(); }),
+    payFor: () => paymentSheet(customer(d.id)),
+    sellTo: () => { cart = newCart(); cart.type = 'credit'; cart.customerId = d.id; go('sell'); },
+    editCustomer: () => customerSheet(customer(d.id)),
+    delCustomer: () => { const c = customer(d.id); const b = balanceOf(c.id);
+      ask('حذف العميل؟', b > 0 ? `عليه ${moneyTxt(b)}! هيتمسح هو وكل حساباته` : 'هيتمسح العميل وحساباته', 'حذف', () => {
+        db.customers = db.customers.filter(x => x !== c); db.payments = db.payments.filter(p => p.customerId !== c.id);
+        db.sales.forEach(s => { if (s.customerId === c.id) { s.customerId = ''; if (s.type === 'credit') { s.type = 'cash'; } } }); save(); go('customers'); }); },
+    saveSettings: () => { db.settings.name = $('#setName').value.trim(); db.settings.currency = $('#setCur').value.trim() || 'ج.م'; save(); toast('اتحفظ ✅'); render(); },
+    restore: () => $('#restoreFile').click(),
+    wipe: () => ask('مسح كل البيانات؟', 'كل المبيعات والعملاء والبضاعة هتتمسح من الجهاز ده. خد نسخة احتياطية الأول.', 'امسح كله', () => { db = blank(); cart = null; save(); go('home'); }),
+  };
+  if (d.act && acts[d.act]) acts[d.act]();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'q') { cart.q = e.target.value; $('#prodGrid').innerHTML = prodGrid(); }
+  if (e.target.id === 'disc') { cart.discInput = num(e.target.value); drawSums(); }
+  if (e.target.id === 'paid') { cart.paid = num(e.target.value); drawSums(); }
+});
+document.addEventListener('change', e => { if (e.target.id === 'restoreFile' && e.target.files[0]) { restore(e.target.files[0]); e.target.value = ''; } });
+$('#settingsBtn').onclick = () => go('settings');
+
+// Home-screen icon drawn at runtime (no image files needed).
+try { const c = document.createElement('canvas'); c.width = c.height = 180; const x = c.getContext('2d');
+  x.fillStyle = '#0f766e'; x.fillRect(0, 0, 180, 180); x.fillStyle = '#fff'; x.font = 'bold 96px Tahoma, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('₤', 90, 96);
+  $('#touchIcon').href = c.toDataURL('image/png'); } catch (e) {}
+render();
+</script>
+</body>
+</html>
