@@ -262,7 +262,7 @@
     });
   }
 
-  const api = { parse, normalize, wordsToNumbers, splitSegments, cleanNote };
+  const api = { parse, normalize, wordsToNumbers, splitSegments, cleanNote, findCategory: (text, categories, kind) => findCategory(normalize(text), categories, kind) };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.MasroofyParser = api;
 })(typeof window !== 'undefined' ? window : globalThis);

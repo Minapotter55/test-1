@@ -44,12 +44,32 @@ jobs:
           cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
           npx cap add android
 
-      - name: Permissions and icons
+      - name: Native code, permissions and icons
         run: |
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          # المايك + السماح بالوصول لخدمة التعرف على الصوت في أندرويد 11+
-          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n</manifest>#' "$MANIFEST"
-          cat "$MANIFEST"
+          JAVA_DIR=android/app/src/main/java/com/masroofy/app
+          cp resources/android/java/*.java "$JAVA_DIR/"
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          # المايك، قراية الرسايل، والوصول لخدمة التعرف على الصوت في أندرويد 11+
+          s = s.replace('</manifest>', """    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.READ_SMS" />
+              <uses-permission android:name="android.permission.RECEIVE_SMS" />
+              <queries>
+                  <intent>
+                      <action android:name="android.speech.RecognitionService" />
+                  </intent>
+              </queries>
+          </manifest>""")
+          s = s.replace('</application>', """    <receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
+                      <intent-filter android:priority="999">
+                          <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+                      </intent-filter>
+                  </receiver>
+              </application>""")
+          open(p, 'w').write(s)
+          PY
+          cat android/app/src/main/AndroidManifest.xml
           RES=android/app/src/main/res
           rm -rf "$RES/mipmap-anydpi-v26"
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do

@@ -4,7 +4,7 @@
   "private": true,
   "description": "مصروفي: متابعة المصاريف بالصوت",
   "scripts": {
-    "test": "node tests/parser.test.mjs"
+    "test": "node tests/parser.test.mjs && node tests/sms.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
