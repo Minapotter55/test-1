@@ -106,7 +106,7 @@
   /* ---------- التنقل ---------- */
   let view = 'home';
   function go(v) {
-    view = v;
+    view = v; sel = null;
     $$('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === v)));
     ['home', 'tx', 'acc', 'set'].forEach(k => { $('#v-' + k).hidden = k !== v; });
     $('#monthNav').style.visibility = (v === 'home' || v === 'tx') ? 'visible' : 'hidden';
@@ -114,8 +114,8 @@
     window.scrollTo({ top: 0 });
   }
   $$('.tab').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
-  $('#mPrev').addEventListener('click', () => { cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); });
-  $('#mNext').addEventListener('click', () => { cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); });
+  $('#mPrev').addEventListener('click', () => { sel = null; cur.m--; if (cur.m < 0) { cur.m = 11; cur.y--; } render(); });
+  $('#mNext').addEventListener('click', () => { sel = null; cur.m++; if (cur.m > 11) { cur.m = 0; cur.y++; } render(); });
 
   function render() {
     $('#monthLabel').textContent = `${MONTHS[cur.m]} ${cur.y}`;
@@ -253,19 +253,27 @@
   function shortNum(v) { return v >= 1000 ? (v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 }) + 'k' : String(Math.round(v)); }
 
   const sortTx = (a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt);
-  function txRow(t) {
+  function txRow(t, selSet) {
+    if (!(selSet instanceof Set)) selSet = null;
     const c = catById(t.categoryId); const a = accById(t.accountId); const to = accById(t.toAccountId);
+    const checked = selSet && selSet.has(t.id);
     const icon = t.type === 'transfer' ? '⇄' : (c ? c.icon : '•');
     const title = t.type === 'transfer' ? `تحويل ${a ? a.name : ''} ← ${to ? to.name : ''}` : (t.note || (c ? c.name : ''));
     const sub = t.type === 'transfer' ? (t.note || dayLabel(t.date)) : `${c ? c.name : ''} · ${a ? a.name : ''}`;
     const sign = t.type === 'expense' ? '−' : t.type === 'income' ? '+' : '';
-    return `<button class="tx" data-tx="${esc(t.id)}"><span class="tx-ic" style="${c && t.type !== 'transfer' ? `background:color-mix(in srgb, ${c.color} 16%, var(--surface))` : ''}">${esc(icon)}</span>
+    const ic = selSet ? `<span class="tx-ic tx-check${checked ? ' on' : ''}" aria-hidden="true">${checked ? '✓' : ''}</span>`
+      : `<span class="tx-ic" style="${c && t.type !== 'transfer' ? `background:color-mix(in srgb, ${c.color} 16%, var(--surface))` : ''}">${esc(icon)}</span>`;
+    return `<button class="tx${checked ? ' selected' : ''}" data-tx="${esc(t.id)}"${selSet ? ` role="checkbox" aria-checked="${!!checked}"` : ''}>${ic}
       <span class="tx-main"><div class="tx-t">${esc(title)}${t.source === 'voice' ? ' <span class="pill">🎙</span>' : t.source === 'sms' ? ' <span class="pill">📩</span>' : ''}</div><div class="tx-s">${esc(sub)}</div></span>
       <span class="tx-a ${t.type} num">${sign}${fmt(t.amount)}</span></button>`;
   }
 
   /* ---------- العمليات ---------- */
   let txFilter = { type: 'all', acc: '', q: '' };
+  let sel = null; // Set فيها العمليات المتحدده لما وضع التحديد شغال
+  let longFired = false, ignoreClickUntil = 0;
+  // الضغطه الطويله بتخلص بـ click لازم نتجاهله، بس الضغطات اللي بعده تشتغل عادي
+  document.addEventListener('pointerup', () => { if (longFired) { longFired = false; ignoreClickUntil = Date.now() + 350; } }, true);
   function renderTx() {
     const el = $('#v-tx');
     const q = MasroofyParser.normalize(txFilter.q);
@@ -278,21 +286,64 @@
     const groups = {};
     list.forEach(t => { (groups[t.date] = groups[t.date] || []).push(t); });
     const typeChips = [['all', 'الكل'], ['expense', 'مصاريف'], ['income', 'دخل'], ['transfer', 'تحويلات']];
+    if (sel) [...sel].forEach(id => { if (!list.some(t => t.id === id)) sel.delete(id); });
+    const allOn = sel && list.length && list.every(t => sel.has(t.id));
+    const selTotal = sel ? list.filter(t => sel.has(t.id)).reduce((s, t) => s + t.amount, 0) : 0;
     el.innerHTML = `
-      <input class="search" id="txSearch" type="search" placeholder="دوّر: أكل، اوبر، 150…" value="${esc(txFilter.q)}">
+      ${sel ? `<div class="selbar">
+          <button class="btn small" id="selCancel">إلغاء</button>
+          <div class="selinfo"><b class="num">${sel.size}</b> متحدد${sel.size ? ` · <span class="num">${fmt(selTotal)}</span>` : ''}</div>
+          <button class="btn small" id="selAll" ${list.length ? '' : 'disabled'}>${allOn ? 'شيل الكل' : 'تحديد الكل'}</button>
+          <button class="btn small danger" id="selDel" ${sel.size ? '' : 'disabled'}>حذف</button>
+        </div>`
+      : `<div class="search-row"><input class="search" id="txSearch" type="search" placeholder="دوّر: أكل، اوبر، 150…" value="${esc(txFilter.q)}"><button class="btn small" id="selStart" ${list.length ? '' : 'disabled'}>تحديد</button></div>`}
       <div class="filters">${typeChips.map(([k, n]) => `<button class="chip" data-ft="${k}" aria-pressed="${txFilter.type === k}">${n}</button>`).join('')}
         ${S.accounts.map(a => `<button class="chip" data-fa="${esc(a.id)}" aria-pressed="${txFilter.acc === a.id}">${esc(a.name)}</button>`).join('')}</div>
       <div class="card" style="padding-block:4px 8px">
         ${list.length ? Object.keys(groups).map(d => {
           const dayOut = groups[d].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-          return `<div class="day-head"><span>${dayLabel(d)}</span><span>${dayOut ? '−' + money(dayOut) : ''}</span></div><div class="list">${groups[d].map(txRow).join('')}</div>`;
+          return `<div class="day-head"><span>${dayLabel(d)}</span><span>${dayOut ? '−' + money(dayOut) : ''}</span></div><div class="list">${groups[d].map(t => txRow(t, sel)).join('')}</div>`;
         }).join('') : `<div class="empty">مفيش عمليات في ${MONTHS[cur.m]} ${txFilter.q || txFilter.acc || txFilter.type !== 'all' ? 'بالفلتر ده' : ''}.</div>`}
       </div>`;
     const s = $('#txSearch', el);
-    s.addEventListener('input', () => { txFilter.q = s.value; const pos = s.selectionStart; renderTx(); const n = $('#txSearch'); n.focus(); n.setSelectionRange(pos, pos); });
+    if (s) s.addEventListener('input', () => { txFilter.q = s.value; const pos = s.selectionStart; renderTx(); const n = $('#txSearch'); n.focus(); n.setSelectionRange(pos, pos); });
+    const startSel = $('#selStart', el); if (startSel) startSel.onclick = () => { sel = new Set(); renderTx(); };
+    if (sel) {
+      $('#selCancel', el).onclick = () => { sel = null; renderTx(); };
+      $('#selAll', el).onclick = () => { if (allOn) sel.clear(); else list.forEach(t => sel.add(t.id)); renderTx(); };
+      $('#selDel', el).onclick = () => deleteSelected();
+    }
     $$('[data-ft]', el).forEach(b => b.addEventListener('click', () => { txFilter.type = b.dataset.ft; renderTx(); }));
     $$('[data-fa]', el).forEach(b => b.addEventListener('click', () => { txFilter.acc = txFilter.acc === b.dataset.fa ? '' : b.dataset.fa; renderTx(); }));
-    $$('[data-tx]', el).forEach(b => b.addEventListener('click', () => openTxSheet(S.txns.find(t => t.id === b.dataset.tx))));
+    $$('[data-tx]', el).forEach(b => {
+      b.addEventListener('click', () => {
+        if (Date.now() < ignoreClickUntil) return;
+        const id = b.dataset.tx;
+        if (sel) { sel.has(id) ? sel.delete(id) : sel.add(id); renderTx(); }
+        else openTxSheet(S.txns.find(t => t.id === id));
+      });
+      // ضغطه طويله على أي عمليه تبدأ التحديد بيها
+      let timer, x0, y0;
+      b.addEventListener('pointerdown', e => {
+        x0 = e.clientX; y0 = e.clientY; clearTimeout(timer);
+        if (sel) return;
+        timer = setTimeout(() => { longFired = true; sel = new Set([b.dataset.tx]); if (navigator.vibrate) navigator.vibrate(15); renderTx(); }, 480);
+      });
+      b.addEventListener('pointermove', e => { if (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10) clearTimeout(timer); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(timer)));
+      b.addEventListener('contextmenu', e => e.preventDefault());
+    });
+  }
+
+  async function deleteSelected() {
+    const ids = new Set(sel);
+    const items = S.txns.filter(t => ids.has(t.id));
+    if (!items.length) return;
+    const total = items.reduce((s, t) => s + t.amount, 0);
+    if (!(await confirmSheet(`تمسح ${items.length} ${items.length === 1 ? 'عملية' : 'عمليات'}؟`, `إجمالي ${fmt(total)} ${S.settings.currency}. أرصدة الحسابات هتتعدل على كده.`, 'امسح'))) return;
+    S.txns = S.txns.filter(t => !ids.has(t.id));
+    sel = null; save(); render();
+    toast(`اتمسح ${items.length} ${items.length === 1 ? 'عملية' : 'عمليات'}`, 'تراجع', () => { S.txns.push(...items); save(); render(); toast('رجعت ✓'); });
   }
 
   /* ---------- الحسابات ---------- */
@@ -963,7 +1014,7 @@
   if (isNative) {
     const App = plugin('App');
     if (App && App.addListener) {
-      App.addListener('backButton', () => { if ($('#scrim')) closeSheet(); else if (view !== 'home') go('home'); else App.exitApp(); });
+      App.addListener('backButton', () => { if ($('#scrim')) closeSheet(); else if (sel) { sel = null; renderTx(); } else if (view !== 'home') go('home'); else App.exitApp(); });
       App.addListener('resume', () => smsSync());
     }
     const R = smsPlugin();
