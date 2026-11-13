@@ -190,6 +190,20 @@ h2 { font-size: 16px; font-weight: 600; }
 .btn { flex: 1; border: 0; border-radius: 14px; padding: 13px; font-weight: 600; background: var(--surface-2); }
 .btn.primary { background: var(--blue); color: #fff; }
 .btn.danger { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--bad); }
+.sec-title { font-family: var(--font-display); font-weight: 600; font-size: 15px; margin: 20px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.sheet h3 + .sec-title { border-top: 0; padding-top: 0; margin-top: 4px; }
+.input.mini { width: auto; max-width: 48%; flex: none; padding: 8px 10px; font-size: 14px; }
+.rule-add { display: flex; gap: 8px; align-items: center; margin-block: 8px; flex-wrap: wrap; }
+.rule-add .input { flex: 1 1 140px; min-width: 0; }
+.test-out { margin-top: 8px; border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.8; background: var(--surface-2); }
+.test-out.good { background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
+.test-out.bad { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+.pend-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; margin-bottom: 8px; }
+.pend-row .parsed-item { margin-bottom: 0; }
+.icon-btn.sm { width: 38px; height: 38px; font-size: 17px; font-weight: 700; }
+.icon-btn.ok { background: color-mix(in srgb, var(--good) 16%, var(--surface)); color: var(--good); }
+.icon-btn.no { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--bad); }
+.pend-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: start; border-color: var(--blue); font-size: 14.5px; }
 .btn:disabled { opacity: .4; cursor: default; }
 .btn.small { flex: none; padding: 8px 14px; font-size: 13.5px; border-radius: 12px; }
 

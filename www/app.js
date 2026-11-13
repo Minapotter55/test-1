@@ -22,6 +22,7 @@
   const DAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
 
   /* ---------- الحفظ ---------- */
+  const SMS_DEFAULTS = { enabled: false, lastSync: 0, review: false, minAmount: 0, atmMode: 'transfer', pair: true, ignored: [] };
   function fresh() {
     return {
       version: 1,
@@ -29,8 +30,8 @@
       categories: clone(MasroofyDefaults.categories),
       txns: [],
       budget: { monthly: 0 },
-      settings: { theme: 'system', defaultAccount: 'cash', currency: 'ج.م', voiceLang: 'ar-EG', autoSave: true, sms: { enabled: false, lastSync: 0 } },
-      smsSeen: []
+      settings: { theme: 'system', defaultAccount: 'cash', currency: 'ج.م', voiceLang: 'ar-EG', autoSave: true, sms: clone(SMS_DEFAULTS) },
+      smsSeen: [], smsRules: [], smsPending: []
     };
   }
   function load() {
@@ -52,8 +53,10 @@
         d.categories.splice(fbIdx >= 0 ? fbIdx : d.categories.length, 0, clone(c));
       }
     });
-    d.settings.sms = Object.assign({ enabled: false, lastSync: 0 }, d.settings.sms || {});
+    d.settings.sms = Object.assign(clone(SMS_DEFAULTS), d.settings.sms || {});
     d.smsSeen = d.smsSeen || [];
+    d.smsRules = d.smsRules || [];
+    d.smsPending = d.smsPending || [];
     return d;
   }
   let S = load();
@@ -171,6 +174,10 @@
       </div>`;
     }
 
+    if (S.smsPending.length) {
+      html += `<button class="card pend-card" id="pendOpen"><span>📩 <b class="num">${S.smsPending.length}</b> ${S.smsPending.length === 1 ? 'عملية' : 'عمليات'} من الرسايل مستنية موافقتك</span><span class="link">راجع</span></button>`;
+    }
+
     if (!hasAny) {
       html += `<div class="card empty">
         <h2>ابدأ سجّل أول مصروف</h2>
@@ -203,6 +210,7 @@
   function bindHome(el) {
     $$('[data-example]', el).forEach(b => b.addEventListener('click', () => { $('#smartInput').value = b.dataset.example; handleText(b.dataset.example); }));
     const demo = $('#loadDemo', el); if (demo) demo.addEventListener('click', loadDemo);
+    const pend = $('#pendOpen', el); if (pend) pend.addEventListener('click', pendingSheet);
     const all = $('#seeAll', el); if (all) all.addEventListener('click', () => go('tx'));
     $$('[data-tx]', el).forEach(b => b.addEventListener('click', () => openTxSheet(S.txns.find(t => t.id === b.dataset.tx))));
     $$('[data-acc]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'all', acc: b.dataset.acc, cat: '', q: '' }; go('tx'); }));
@@ -480,10 +488,13 @@
         if (!(amt > 0)) { $('#fAmount', sh).focus(); toast('اكتب المبلغ الأول'); return; }
         if (d.type === 'transfer' && d.accountId === d.toAccountId) { toast('اختار حسابين مختلفين'); return; }
         const rec = { id: d.id || uid(), type: d.type, amount: amt, categoryId: d.type === 'transfer' ? null : d.categoryId, accountId: d.accountId, toAccountId: d.type === 'transfer' ? d.toAccountId : null, date: d.date, note: d.note.trim(), createdAt: d.createdAt || new Date().toISOString(), source: d.source || 'manual', text: d.text };
-        ['sms', 'merchant', 'time'].forEach(k => { if (d[k] != null) rec[k] = d[k]; });
+        ['sms', 'merchant', 'time', 'smsFrom'].forEach(k => { if (d[k] != null) rec[k] = d[k]; });
         if (!isNew) {
           const old = S.txns.find(t => t.id === rec.id);
-          if (old && (old.source === 'voice' || old.source === 'sms') && old.categoryId !== rec.categoryId && rec.categoryId) learn(Object.assign({}, rec, { note: old.merchant || rec.note }));
+          if (old && old.categoryId !== rec.categoryId && rec.categoryId) {
+            if (old.source === 'sms' && old.merchant) upsertRule(old.merchant, rec.categoryId);
+            else if (old.source === 'voice' || old.source === 'sms') learn(Object.assign({}, rec, { note: old.merchant || rec.note }));
+          }
           Object.assign(old, rec);
         } else S.txns.push(rec);
         save(); closeSheet(); render(); toast(isNew ? 'اتسجلت ✓' : 'اتعدلت ✓');
@@ -596,7 +607,10 @@
   function handleText(text) {
     text = (text || '').trim(); if (!text) return;
     if (window.MasroofySms && MasroofySms.looksLikeSms(text)) {
-      const added = ingestSms([{ address: '', body: text, date: Date.now() }], { pasted: true });
+      const msg = { address: '', body: text, date: Date.now() };
+      const check = analyzeSms(msg, { dry: true, pasted: true });
+      if (check.skip) { toast('مش هتتسجل: ' + esc(check.skip), 'إعدادات', () => smsControlSheet()); return; }
+      const added = ingestSms([msg], { pasted: true });
       $('#smartInput').value = '';
       if (added.length) announceSms(added); else toast('الرسالة دي اتسجلت قبل كده');
       return;
@@ -780,9 +794,10 @@
     return b;
   }
   let createdAccounts = [];
-  function accountForSms(address, provider, pasted) {
+  const pidFor = (address, provider) => provider ? provider.id : 'sender:' + (address || '').trim();
+  function accountForSms(address, provider, pasted, dry) {
     if (!provider && pasted) return accById(S.settings.defaultAccount) || S.accounts[0];
-    const pid = provider ? provider.id : 'sender:' + (address || '').trim();
+    const pid = pidFor(address, provider);
     const linked = x => (x.smsSenders || []).filter(k => k !== 'instapay');
     let a = S.accounts.find(x => (x.smsSenders || []).includes(pid));
     if (!a && provider && provider.id === 'instapay') a = S.accounts.find(x => x.type === 'instapay');
@@ -796,6 +811,7 @@
       const def = provider.type === 'wallet' ? 'wallet' : (provider.type === 'bank' ? 'instapay' : null);
       a = S.accounts.find(x => x.id === def && !linked(x).length);
     }
+    if (dry) return a || { id: null, isNew: true, name: provider ? provider.name : (address || 'حساب من الرسايل') };
     if (!a) {
       a = { id: uid(), name: provider ? provider.name : (address || 'حساب من الرسايل'), type: provider ? provider.type : 'bank', initial: 0, keywords: provider ? [provider.name] : [], smsSenders: [] };
       if (!ACC_TYPES[a.type]) a.type = 'other';
@@ -821,37 +837,99 @@
     return fb ? fb.id : null;
   }
 
+  // قواعد المستخدم: أطول كلمه بتكسب
+  function ruleFor(text) {
+    const t = N(text);
+    return S.smsRules.slice().sort((a, b) => b.match.length - a.match.length).find(r => { const m = N(r.match); return m && t.includes(m); }) || null;
+  }
+  function upsertRule(match, categoryId) {
+    match = String(match || '').trim(); if (!match) return null;
+    let r = S.smsRules.find(x => N(x.match) === N(match));
+    if (r) r.categoryId = categoryId; else { r = { id: uid(), match, categoryId }; S.smsRules.push(r); }
+    return r;
+  }
+
+  // بيقرر الرساله هتتسجل إزاي، أو ليه مش هتتسجل. dry = تجربه من غير ما يعمل حسابات أو يربط جهات
+  function analyzeSms(m, opts = {}) {
+    const st = S.settings.sms;
+    if (!opts.pasted && MasroofySms.isPhoneSender(m.address)) return { skip: 'رسالة من رقم موبايل عادي، مش من بنك أو محفظة' };
+    const p = MasroofySms.parse(m);
+    if (!p) return { skip: 'مفيهاش عملية فلوس واضحة (ممكن تكون كود أو عرض أو رصيد بس)' };
+    const pid = pidFor(m.address, p.provider);
+    if ((st.ignored || []).includes(pid)) return { skip: `رسايل «${senderLabel(pid)}» متجاهلة من إعداداتك`, p };
+    if (st.minAmount > 0 && p.amount < st.minAmount) return { skip: `المبلغ ${fmt(p.amount)} أقل من الحد اللي حطيته (${fmt(st.minAmount)})`, p };
+    const rule = ruleFor((p.merchant || '') + ' ' + m.body);
+    if (rule && rule.categoryId === '__ignore') return { skip: `قاعدتك «${rule.match}»: متسجلهاش`, p, rule };
+    const acc = accountForSms(m.address, p.provider, opts.pasted, opts.dry);
+    const base = { id: uid(), amount: p.amount, date: iso(p.date), time: p.time, createdAt: new Date().toISOString(), source: 'sms', sms: m.body, merchant: p.merchant || '', smsFrom: pid };
+    let rec;
+    if (p.kind === 'atm') {
+      const cash = S.accounts.find(a => a.type === 'cash' && a.id !== acc.id);
+      rec = cash && st.atmMode !== 'expense' ? Object.assign(base, { type: 'transfer', accountId: acc.id, toAccountId: cash.id, categoryId: null, note: 'سحب من الماكينة' })
+        : Object.assign(base, { type: 'expense', accountId: acc.id, categoryId: 'other', note: 'سحب من الماكينة' });
+    } else {
+      const type = p.kind === 'expense' ? 'expense' : 'income';
+      const note = p.merchant ? (p.isTransfer ? (type === 'expense' ? 'تحويل لـ ' : 'تحويل من ') + p.merchant : p.merchant) : (p.isTransfer ? (type === 'expense' ? 'تحويل' : 'تحويل جالك') : '');
+      rec = Object.assign(base, { type, accountId: acc.id, toAccountId: null, categoryId: categoryForSms(p, m.body), note });
+    }
+    if (rule && rec.type !== 'transfer') { const rc = catById(rule.categoryId); if (rc && rc.kind === rec.type) rec.categoryId = rc.id; }
+    return { rec, acc, p, pid, rule };
+  }
+
   function ingestSms(messages, opts = {}) {
     createdAccounts = [];
     const seen = new Set(S.smsSeen);
-    const added = [];
+    const added = [], pending = [];
+    const review = S.settings.sms.review && !opts.pasted;
     messages.slice().sort((a, b) => a.date - b.date).forEach(m => {
       if (!opts.pasted && MasroofySms.isPhoneSender(m.address)) return; // رسايل الناس العاديه
       const key = MasroofySms.keyOf(m);
       if (seen.has(key)) return;
-      const p = MasroofySms.parse(m);
-      if (!p) return;
+      const a = analyzeSms(m, opts);
+      if (!a.p) return;
       seen.add(key); S.smsSeen.push(key);
-      const acc = accountForSms(m.address, p.provider, opts.pasted);
+      if (a.skip) return;
+      const { rec, acc, p } = a;
       if (p.balance != null && (!acc.smsBalanceAt || p.time >= acc.smsBalanceAt)) { acc.smsBalance = p.balance; acc.smsBalanceAt = p.time; }
-      const base = { id: uid(), amount: p.amount, date: iso(p.date), time: p.time, createdAt: new Date().toISOString(), source: 'sms', sms: m.body, merchant: p.merchant || '' };
-      let rec;
-      if (p.kind === 'atm') {
-        const cash = S.accounts.find(a => a.type === 'cash' && a.id !== acc.id);
-        rec = cash ? Object.assign(base, { type: 'transfer', accountId: acc.id, toAccountId: cash.id, categoryId: null, note: 'سحب من الماكينة' })
-          : Object.assign(base, { type: 'expense', accountId: acc.id, categoryId: 'other', note: 'سحب من الماكينة' });
-      } else {
-        const type = p.kind === 'expense' ? 'expense' : 'income';
-        const note = p.merchant ? (p.isTransfer ? (type === 'expense' ? 'تحويل لـ ' : 'تحويل من ') + p.merchant : p.merchant) : (p.isTransfer ? (type === 'expense' ? 'تحويل' : 'تحويل جالك') : '');
-        rec = Object.assign(base, { type, accountId: acc.id, toAccountId: null, categoryId: categoryForSms(p, m.body), note });
-      }
-      S.txns.push(rec); added.push(rec);
+      if (review) { S.smsPending.push(rec); pending.push(rec); }
+      else { S.txns.push(rec); added.push(rec); }
     });
     if (S.smsSeen.length > 4000) S.smsSeen = S.smsSeen.slice(-3000);
-    pairOwnTransfers(added);
+    if (S.settings.sms.pair) pairOwnTransfers(added);
     calibrate(added);
     save();
-    return added.filter(r => S.txns.includes(r));
+    const out = added.filter(r => S.txns.includes(r));
+    out.pending = pending;
+    return out;
+  }
+
+  // العمليات اللي مستنيه موافقتك
+  function approvePending(list) {
+    list.forEach(r => S.txns.push(r));
+    S.smsPending = S.smsPending.filter(x => !list.includes(x));
+    if (S.settings.sms.pair) pairOwnTransfers(list);
+    calibrate(list);
+    save();
+  }
+  function pendingSheet() {
+    const items = S.smsPending;
+    if (!items.length) { closeSheet(); render(); return; }
+    $('#toastHost').innerHTML = '';
+    openSheet(`<h3>مستنية موافقتك (<span class="num">${items.length}</span>)</h3>
+      <p class="hint">✓ تسجلها، ✕ تتجاهلها، أو دوس على العملية نفسها عشان تعدلها قبل ما تتسجل.</p>
+      ${items.map((d, i) => { const c = catById(d.categoryId); const a = accById(d.accountId); const to = accById(d.toAccountId);
+        return `<div class="pend-row"><button class="parsed-item" data-pedit="${i}"><span class="tx-ic">${d.type === 'transfer' ? '⇄' : esc(c ? c.icon : '•')}</span><span class="tx-main"><div class="tx-t">${esc(d.note || (c ? c.name : ''))}</div><div class="tx-s">${esc(c ? c.name + ' · ' : '')}${esc(a ? a.name : '')}${to ? ' ← ' + esc(to.name) : ''} · ${esc(dayLabel(d.date))}</div></span><span class="tx-a ${d.type} num">${d.type === 'expense' ? '−' : d.type === 'income' ? '+' : ''}${fmt(d.amount)}</span></button>
+          <button class="icon-btn sm ok" data-pok="${i}" aria-label="سجّلها">✓</button><button class="icon-btn sm no" data-pno="${i}" aria-label="تجاهلها">✕</button></div>`; }).join('')}
+      <div class="actions"><button class="btn" id="pNo">تجاهل الكل</button><button class="btn primary" id="pOk">سجّل الكل</button></div>`, sh => {
+      $$('[data-pok]', sh).forEach(b => b.onclick = () => { approvePending([items[+b.dataset.pok]]); toast('اتسجلت ✓'); pendingSheet(); });
+      $$('[data-pno]', sh).forEach(b => b.onclick = () => { S.smsPending.splice(+b.dataset.pno, 1); save(); pendingSheet(); });
+      $$('[data-pedit]', sh).forEach(b => b.onclick = () => {
+        const d = items[+b.dataset.pedit];
+        openTxSheet(Object.assign({}, d, { id: undefined }), { onSaved: () => { S.smsPending = S.smsPending.filter(x => x !== d); save(); setTimeout(pendingSheet, 60); } });
+      });
+      $('#pOk', sh).onclick = () => { const n = items.length; approvePending(items.slice()); closeSheet(); render(); toast(`اتسجل ${n} ${n === 1 ? 'عملية' : 'عمليات'} ✓`); };
+      $('#pNo', sh).onclick = () => { S.smsPending = []; save(); closeSheet(); render(); toast('اتجاهلت'); };
+    });
   }
 
   // تحويل من حساب ليك لحساب تاني ليك بييجي في رسالتين (خصم هنا وإيداع هناك): نخليهم عملية تحويل واحده
@@ -877,6 +955,12 @@
 
   function announceSms(added) {
     render();
+    if (!added.length && added.pending && added.pending.length) {
+      const n = added.pending.length;
+      toast(`📩 ${n === 1 ? 'عملية جديدة' : n + ' عمليات جديدة'} من الرسايل مستنية موافقتك`, 'راجع', pendingSheet);
+      return;
+    }
+    if (!added.length) return;
     const total = added.reduce((s, r) => s + r.amount, 0);
     const extra = createdAccounts.length ? ` · حساب جديد: ${createdAccounts.map(esc).join('، ')}` : '';
     const r = added[0]; const c = catById(r.categoryId); const a = accById(r.accountId);
@@ -901,7 +985,7 @@
       const added = ingestSms(msgs);
       S.settings.sms.lastSync = Math.max(S.settings.sms.lastSync || 0, newest);
       save();
-      if (added.length) announceSms(added); else if (opts.manual) toast('مفيش رسايل جديدة');
+      if (added.length || added.pending.length) announceSms(added); else if (opts.manual) toast('مفيش رسايل جديدة');
     } catch (e) {
       if (String(e && (e.code || e.message)).includes('PERMISSION')) { S.settings.sms.enabled = false; save(); if (opts.manual) smsGuide(); }
     } finally { syncing = false; }
@@ -999,7 +1083,8 @@
     const linked = S.accounts.filter(a => (a.smsSenders || []).length);
     if (!isNative) {
       return `<div class="card"><div class="card-head"><h2>رسايل البنك والمحافظ</h2></div>
-        <p class="hint">التسجيل التلقائي من الرسايل شغال على نسخة الأندرويد. على الآيفون أبل مش بتسمح لأي تطبيق يقرا الرسايل، فانسخ رسالة البنك أو المحفظة والصقها في خانة الكتابة تحت، وهو هيعرف المبلغ والحساب ويسجلها.</p></div>`;
+        <p class="hint">التسجيل التلقائي من الرسايل شغال على نسخة الأندرويد. على الآيفون أبل مش بتسمح لأي تطبيق يقرا الرسايل، فانسخ رسالة البنك أو المحفظة والصقها في خانة الكتابة تحت، وهو هيعرف المبلغ والحساب ويسجلها.</p>
+        <div class="actions"><button class="btn" id="smsCtl">تحكم في الرسايل</button></div></div>`;
     }
     return `<div class="card"><div class="card-head"><h2>رسايل البنك والمحافظ</h2><span class="pill">${st.enabled ? 'شغّال ✓' : 'مقفول'}</span></div>
       <p class="hint">أي رسالة خصم أو إيداع أو تحويل أو سحب من البنك، فودافون كاش، اورنج كاش، اتصالات كاش، وي باي أو انستاباي بتتسجل لوحدها في الحساب الصح. رسايل الأكواد والعروض بيتجاهلها.</p>
@@ -1007,6 +1092,8 @@
         <div class="set-row"><div><div class="t">الحسابات المربوطة</div><div class="d">${linked.length ? linked.map(a => esc(a.name)).join('، ') : 'لسه مفيش رسايل اتقرت'}</div></div></div>
         <div class="actions"><button class="btn" id="smsMonth">اسحب رسايل قديمة</button><button class="btn" id="smsOff">وقّف</button></div>`
       : `<div class="actions"><button class="btn primary" id="smsOn">شغّل قراءة الرسايل</button></div>`}
+      ${S.smsPending.length ? `<div class="set-row"><div><div class="t">مستنية موافقتك</div><div class="d"><span class="num">${S.smsPending.length}</span> عملية</div></div><button class="btn small primary" id="smsPend">راجع</button></div>` : ''}
+      <div class="actions"><button class="btn" id="smsCtl">تحكم في الرسايل</button></div>
       ${S.txns.some(t => t.source === 'sms') ? '<div class="actions"><button class="btn danger" id="smsClear">امسح اللي اتسجل من الرسايل</button></div>' : ''}
     </div>`;
   }
@@ -1015,7 +1102,87 @@
     const now = $('#smsNow', el); if (now) now.onclick = async () => { await smsSync({ manual: true }); renderSet(); };
     const month = $('#smsMonth', el); if (month) month.onclick = async () => { const since = await pickSince('تسحب الرسايل من إمتى؟', 'الرسايل اللي اتسجلت قبل كده مش هتتكرر.'); if (since == null) return; await smsSync({ since, manual: true }); renderSet(); };
     const clr = $('#smsClear', el); if (clr) clr.onclick = clearSmsSheet;
+    const ctl = $('#smsCtl', el); if (ctl) ctl.onclick = () => smsControlSheet();
+    const pnd = $('#smsPend', el); if (pnd) pnd.onclick = pendingSheet;
     const off = $('#smsOff', el); if (off) off.onclick = () => { S.settings.sms.enabled = false; save(); renderSet(); toast('وقفت قراءة الرسايل'); };
+  }
+
+  function smsControlSheet(keepTest) {
+    const st = S.settings.sms;
+    const owner = pid => S.accounts.find(a => (a.smsSenders || []).includes(pid));
+    const pids = [...new Set([].concat(...S.accounts.map(a => a.smsSenders || []), st.ignored || [], S.txns.map(t => t.smsFrom).filter(Boolean)))];
+    const catOpts = sel => `<optgroup label="مصاريف">${S.categories.filter(c => c.kind === 'expense').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
+      <optgroup label="دخل">${S.categories.filter(c => c.kind === 'income').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
+      <option value="__ignore" ${sel === '__ignore' ? 'selected' : ''}>🚫 متسجلهاش</option>`;
+    const ruleLabel = r => r.categoryId === '__ignore' ? '🚫 متسجلهاش' : (c => c ? esc(c.icon + ' ' + c.name) : 'تصنيف محذوف')(catById(r.categoryId));
+    const testVal = keepTest || { body: '', from: '' };
+    openSheet(`<h3>تحكم في الرسايل</h3>
+
+      <div class="sec-title">طريقة التسجيل</div>
+      <div class="set-row"><div><div class="t">اسألني قبل ما يسجل</div><div class="d">الرسايل الجديدة تستنى موافقتك بدل ما تتسجل على طول</div></div><button class="btn small ${st.review ? 'primary' : ''}" id="cReview">${st.review ? 'شغّال' : 'مقفول'}</button></div>
+      <div class="set-row"><div><div class="t">تجاهل المبالغ الصغيرة</div><div class="d">زي رسوم التحويل (جنيه أو اتنين). سيبها فاضية عشان يسجل كله</div></div><input class="input num mini" id="cMin" inputmode="decimal" placeholder="مثلاً 5" value="${st.minAmount || ''}"></div>
+      <div class="set-row"><div><div class="t">السحب من الماكينة</div><div class="d">يتسجل إزاي</div></div><select class="input mini" id="cAtm"><option value="transfer" ${st.atmMode !== 'expense' ? 'selected' : ''}>تحويل للكاش اللي معايا</option><option value="expense" ${st.atmMode === 'expense' ? 'selected' : ''}>مصروف</option></select></div>
+      <div class="set-row"><div><div class="t">التحويل بين حساباتي</div><div class="d">خصم من حساب وإيداع في حساب تاني بنفس المبلغ خلال ربع ساعة = تحويل واحد</div></div><button class="btn small ${st.pair ? 'primary' : ''}" id="cPair">${st.pair ? 'شغّال' : 'مقفول'}</button></div>
+
+      <div class="sec-title">الجهات</div>
+      ${pids.length ? pids.map(pid => { const o = owner(pid); const ign = (st.ignored || []).includes(pid);
+        return `<div class="set-row"><div><div class="t">${esc(senderLabel(pid))}</div><div class="d">${S.txns.filter(t => t.smsFrom === pid).length} عملية</div></div>
+          <select class="input mini" data-sender="${esc(pid)}">${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايلها</option></select></div>`; }).join('')
+        : '<p class="hint">لسه مفيش جهات. أول ما رسالة من بنك أو محفظة تتقري هتظهر هنا، وتقدر تختار تروح لأنهي حساب أو تتجاهلها.</p>'}
+
+      <div class="sec-title">قواعدك</div>
+      <p class="hint">لو اسم المحل أو نص الرسالة فيه الكلمة، يتحط في التصنيف ده أو ميتسجلش خالص. ولما تغيّر تصنيف عملية جت من رسالة، القاعدة بتتعمل لوحدها.</p>
+      ${S.smsRules.length ? S.smsRules.map(r => `<div class="set-row"><div><div class="t">«${esc(r.match)}»</div><div class="d">← ${ruleLabel(r)}</div></div><button class="btn small danger" data-rdel="${esc(r.id)}">حذف</button></div>`).join('') : ''}
+      <div class="rule-add"><input class="input" id="rMatch" placeholder="كلمة، مثلاً: CARREFOUR أو اسم شخص"><select class="input" id="rCat">${catOpts('food')}</select><button class="btn small primary" id="rAdd">ضيف</button></div>
+
+      <div class="sec-title">جرّب رسالة</div>
+      <p class="hint">الصق رسالة وشوف هتتقري إزاي من غير ما تتسجل.</p>
+      <textarea class="input" id="tBody" rows="3" placeholder="الصق الرسالة هنا">${esc(testVal.body)}</textarea>
+      <div class="rule-add"><input class="input" id="tFrom" placeholder="اسم المرسل، مثلاً CIB (اختياري)" value="${esc(testVal.from)}"><button class="btn small primary" id="tRun">جرّب</button></div>
+      <div id="tOut"></div>
+
+      <div class="actions" style="margin-top:14px"><button class="btn primary" id="cDone">تمام</button></div>`, sh => {
+      const redraw = () => { const sc = sh.scrollTop; smsControlSheet({ body: $('#tBody', sh).value, from: $('#tFrom', sh).value }); const n = $('.sheet'); if (n) n.scrollTop = sc; };
+      $('#cDone', sh).onclick = () => { closeSheet(); render(); };
+      $('#cReview', sh).onclick = () => { st.review = !st.review; save(); redraw(); };
+      $('#cPair', sh).onclick = () => { st.pair = !st.pair; save(); redraw(); };
+      $('#cMin', sh).onchange = e => { st.minAmount = Math.max(0, parseFloat(N(e.target.value)) || 0); save(); toast(st.minAmount ? `هيتجاهل أي مبلغ أقل من ${fmt(st.minAmount)}` : 'هيسجل كل المبالغ'); };
+      $('#cAtm', sh).onchange = e => { st.atmMode = e.target.value; save(); toast('اتحفظ. ده للرسايل الجاية'); };
+      $$('[data-sender]', sh).forEach(sel => sel.onchange = () => {
+        const pid = sel.dataset.sender, target = sel.value;
+        S.accounts.forEach(a => { a.smsSenders = (a.smsSenders || []).filter(x => x !== pid); });
+        st.ignored = (st.ignored || []).filter(x => x !== pid);
+        if (target === '__ignore') { st.ignored.push(pid); save(); toast(`مش هيسجل رسايل «${esc(senderLabel(pid))}» تاني`); return redraw(); }
+        const a = accById(target); a.smsSenders = a.smsSenders || []; a.smsSenders.push(pid);
+        let moved = 0;
+        S.txns.forEach(t => { if (t.smsFrom === pid && t.accountId !== a.id && t.toAccountId !== a.id) { t.accountId = a.id; moved++; } });
+        save(); toast(`رسايل «${esc(senderLabel(pid))}» هتروح لـ «${esc(a.name)}»${moved ? ` · اتنقل ${moved} عملية قديمة` : ''}`); redraw();
+      });
+      $$('[data-rdel]', sh).forEach(b => b.onclick = () => { S.smsRules = S.smsRules.filter(r => r.id !== b.dataset.rdel); save(); redraw(); });
+      $('#rAdd', sh).onclick = () => {
+        const match = $('#rMatch', sh).value.trim(); const cat = $('#rCat', sh).value;
+        if (N(match).length < 2) { toast('اكتب كلمة من حرفين على الأقل'); return; }
+        upsertRule(match, cat);
+        // نطبّقها على اللي اتسجل قبل كده من الرسايل
+        let n = 0; const c = catById(cat);
+        if (c) S.txns.forEach(t => { if (t.source === 'sms' && t.type === c.kind && t.categoryId !== c.id && N((t.merchant || '') + ' ' + (t.sms || '')).includes(N(match))) { t.categoryId = c.id; n++; } });
+        save(); toast(cat === '__ignore' ? 'الرسايل الجاية اللي فيها الكلمة دي مش هتتسجل' : `اتضافت القاعدة${n ? ` واتطبقت على ${n} عملية قديمة` : ''}`); redraw();
+      };
+      $('#tRun', sh).onclick = () => {
+        const body = $('#tBody', sh).value.trim(); const from = $('#tFrom', sh).value.trim();
+        const out = $('#tOut', sh);
+        if (!body) { out.innerHTML = '<div class="test-out">الصق رسالة الأول.</div>'; return; }
+        const a = analyzeSms({ address: from, body, date: Date.now() }, { dry: true, pasted: !from });
+        if (a.skip) { out.innerHTML = `<div class="test-out bad">✕ مش هتتسجل: ${esc(a.skip)}</div>`; return; }
+        const r = a.rec; const c = catById(r.categoryId); const to = accById(r.toAccountId);
+        const typeName = { expense: 'مصروف', income: 'دخل', transfer: 'تحويل' }[r.type];
+        out.innerHTML = `<div class="test-out good">✓ هتتسجل كده:<br>
+          <b>${typeName}</b> · <b class="num">${fmt(r.amount)}</b> ${esc(S.settings.currency)}<br>
+          ${r.type === 'transfer' ? `من «${esc(a.acc.name)}» لـ «${esc(to ? to.name : '')}»` : `${esc(c ? c.icon + ' ' + c.name : '')} · ${r.type === 'income' ? 'على' : 'من'} «${esc(a.acc.name)}»${a.acc.isNew ? ' (هيتعمل حساب جديد)' : ''}`}<br>
+          ${r.note ? `ملاحظة: ${esc(r.note)}<br>` : ''}${a.p.balance != null ? `الرصيد في الرسالة: <span class="num">${fmt(a.p.balance)}</span><br>` : ''}${a.rule ? `بسبب قاعدتك «${esc(a.rule.match)}»` : ''}</div>`;
+      };
+      if (keepTest && keepTest.body) $('#tRun', sh).onclick();
+    });
   }
 
   /* ---------- تشغيل ---------- */
@@ -1031,7 +1198,7 @@
       App.addListener('resume', () => smsSync());
     }
     const R = smsPlugin();
-    if (R && R.addListener) R.addListener('sms', m => { if (!S.settings.sms.enabled) return; const added = ingestSms([m]); if (added.length) announceSms(added); });
+    if (R && R.addListener) R.addListener('sms', m => { if (!S.settings.sms.enabled) return; const added = ingestSms([m]); if (added.length || added.pending.length) announceSms(added); });
     smsSync();
   }
 })();
