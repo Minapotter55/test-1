@@ -184,10 +184,10 @@
     }
 
     // الصرف حسب التصنيف
-    const cats = Object.entries(byCat).map(([id, v]) => ({ c: catById(id) || { name: 'محذوف', color: '#7A8BA8', icon: '•' }, v })).sort((a, b) => b.v - a.v);
+    const cats = Object.entries(byCat).map(([id, v]) => ({ id, c: catById(id) || { name: 'محذوف', color: '#7A8BA8', icon: '•' }, v })).sort((a, b) => b.v - a.v);
     html += `<div class="card">
       <div class="card-head"><h2>صرفت على إيه؟</h2><span class="sub">${MONTHS[cur.m]}</span></div>
-      ${cats.length ? `<div class="donut-wrap">${donut(cats, spent)}<div class="legend">${cats.slice(0, 7).map(x => `<div class="legend-row"><span class="sw" style="background:${x.c.color}"></span><span class="nm">${esc(x.c.icon)} ${esc(x.c.name)}</span><span><span class="num">${fmt(x.v)}</span> <span class="pc num">${Math.round(x.v / spent * 100)}%</span></span></div>`).join('')}</div></div>` : `<div class="hint">مفيش مصاريف في الشهر ده.</div>`}
+      ${cats.length ? `<div class="donut-wrap">${donut(cats, spent)}<div class="legend">${cats.slice(0, 7).map(x => `<div class="legend-row" data-legend-cat="${esc(x.id)}" role="button" tabindex="0"><span class="sw" style="background:${x.c.color}"></span><span class="nm">${esc(x.c.icon)} ${esc(x.c.name)}</span><span><span class="num">${fmt(x.v)}</span> <span class="pc num">${Math.round(x.v / spent * 100)}%</span></span></div>`).join('')}</div></div>` : `<div class="hint">مفيش مصاريف في الشهر ده.</div>`}
     </div>`;
 
     html += `<div class="card"><div class="card-head"><h2>الصرف اليومي</h2><span class="sub">متوسط ${money(spent / dayCountForAvg())} في اليوم</span></div>${dailyBars()}</div>`;
@@ -205,7 +205,8 @@
     const demo = $('#loadDemo', el); if (demo) demo.addEventListener('click', loadDemo);
     const all = $('#seeAll', el); if (all) all.addEventListener('click', () => go('tx'));
     $$('[data-tx]', el).forEach(b => b.addEventListener('click', () => openTxSheet(S.txns.find(t => t.id === b.dataset.tx))));
-    $$('[data-acc]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'all', acc: b.dataset.acc, q: '' }; go('tx'); }));
+    $$('[data-acc]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'all', acc: b.dataset.acc, cat: '', q: '' }; go('tx'); }));
+    $$('[data-legend-cat]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'expense', acc: '', cat: b.dataset.legendCat, q: '' }; go('tx'); }));
   }
 
   function donut(cats, total) {
@@ -269,7 +270,7 @@
   }
 
   /* ---------- العمليات ---------- */
-  let txFilter = { type: 'all', acc: '', q: '' };
+  let txFilter = { type: 'all', acc: '', cat: '', q: '' };
   let sel = null; // Set فيها العمليات المتحدده لما وضع التحديد شغال
   let longFired = false, ignoreClickUntil = 0;
   // الضغطه الطويله بتخلص بـ click لازم نتجاهله، بس الضغطات اللي بعده تشتغل عادي
@@ -280,11 +281,20 @@
     const list = S.txns.filter(inMonth).filter(t => {
       if (txFilter.type !== 'all' && t.type !== txFilter.type) return false;
       if (txFilter.acc && t.accountId !== txFilter.acc && t.toAccountId !== txFilter.acc) return false;
+      if (txFilter.cat && t.categoryId !== txFilter.cat) return false;
       if (q) { const c = catById(t.categoryId); const hay = MasroofyParser.normalize([t.note, c && c.name, t.amount].join(' ')); if (!hay.includes(q)) return false; }
       return true;
     }).sort(sortTx);
     const groups = {};
     list.forEach(t => { (groups[t.date] = groups[t.date] || []).push(t); });
+    // شريط التصنيفات: كل تصنيفات التطبيق (حسب نوع الفلتر)، واللي فيها عمليات الشهر ده الأول ومعاها إجماليها
+    const catSum = {};
+    S.txns.filter(inMonth).forEach(t => { if (t.categoryId) catSum[t.categoryId] = (catSum[t.categoryId] || 0) + t.amount; });
+    const catList = S.categories
+      .filter(c => c.id === txFilter.cat || (txFilter.type === 'all' ? true : txFilter.type === c.kind))
+      .map((c, i) => ({ c, v: catSum[c.id] || 0, i }))
+      .sort((a, b) => (b.c.id === txFilter.cat) - (a.c.id === txFilter.cat) || (b.v > 0) - (a.v > 0) || b.v - a.v || a.i - b.i);
+    const catTotal = txFilter.cat ? list.reduce((s, t) => s + t.amount, 0) : 0;
     const typeChips = [['all', 'الكل'], ['expense', 'مصاريف'], ['income', 'دخل'], ['transfer', 'تحويلات']];
     if (sel) [...sel].forEach(id => { if (!list.some(t => t.id === id)) sel.delete(id); });
     const allOn = sel && list.length && list.every(t => sel.has(t.id));
@@ -299,6 +309,8 @@
       : `<div class="search-row"><input class="search" id="txSearch" type="search" placeholder="دوّر: أكل، اوبر، 150…" value="${esc(txFilter.q)}"><button class="btn small" id="selStart" ${list.length ? '' : 'disabled'}>تحديد</button></div>`}
       <div class="filters">${typeChips.map(([k, n]) => `<button class="chip" data-ft="${k}" aria-pressed="${txFilter.type === k}">${n}</button>`).join('')}
         ${S.accounts.map(a => `<button class="chip" data-fa="${esc(a.id)}" aria-pressed="${txFilter.acc === a.id}">${esc(a.name)}</button>`).join('')}</div>
+      ${catList.length ? `<div class="filters">${catList.map(({ c, v }) => `<button class="chip${v ? '' : ' dim'}" data-fc="${esc(c.id)}" aria-pressed="${txFilter.cat === c.id}">${esc(c.icon)} ${esc(c.name)}${v ? ` <span class="num">${fmt(v)}</span>` : ''}</button>`).join('')}</div>` : ''}
+      ${txFilter.cat ? `<div class="hint">إجمالي «${esc((catById(txFilter.cat) || {}).name || '')}» في ${MONTHS[cur.m]}: <b class="num">${fmt(catTotal)}</b> ${esc(S.settings.currency)} · ${list.length} ${list.length === 1 ? 'عملية' : 'عمليات'}</div>` : ''}
       <div class="card" style="padding-block:4px 8px">
         ${list.length ? Object.keys(groups).map(d => {
           const dayOut = groups[d].filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
@@ -313,8 +325,9 @@
       $('#selAll', el).onclick = () => { if (allOn) sel.clear(); else list.forEach(t => sel.add(t.id)); renderTx(); };
       $('#selDel', el).onclick = () => deleteSelected();
     }
-    $$('[data-ft]', el).forEach(b => b.addEventListener('click', () => { txFilter.type = b.dataset.ft; renderTx(); }));
+    $$('[data-ft]', el).forEach(b => b.addEventListener('click', () => { txFilter.type = b.dataset.ft; const c = catById(txFilter.cat); if (c && txFilter.type !== 'all' && c.kind !== txFilter.type) txFilter.cat = ''; renderTx(); }));
     $$('[data-fa]', el).forEach(b => b.addEventListener('click', () => { txFilter.acc = txFilter.acc === b.dataset.fa ? '' : b.dataset.fa; renderTx(); }));
+    $$('[data-fc]', el).forEach(b => b.addEventListener('click', () => { txFilter.cat = txFilter.cat === b.dataset.fc ? '' : b.dataset.fc; renderTx(); }));
     $$('[data-tx]', el).forEach(b => {
       b.addEventListener('click', () => {
         if (Date.now() < ignoreClickUntil) return;

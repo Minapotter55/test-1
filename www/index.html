@@ -153,6 +153,8 @@ h2 { font-size: 16px; font-weight: 600; }
 .filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .filters::-webkit-scrollbar { display: none; }
 .chip { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 6px 12px; font-size: 13px; }
+.chip.dim { opacity: .6; }
+.legend-row[data-legend-cat] { cursor: pointer; }
 .chip[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: #fff; }
 .search-row { display: flex; gap: 8px; align-items: center; }
 .search-row .search { flex: 1; min-width: 0; }
