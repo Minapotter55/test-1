@@ -41,19 +41,21 @@ public class SmsReaderPlugin extends Plugin {
             call.reject("permission not granted", "PERMISSION");
             return;
         }
-        long since = call.getLong("since", 0L);
-        int limit = call.getInt("limit", 1000);
+        // الأرقام الكبيره ممكن توصل Double من الجافاسكريبت، فبنقراها كده عشان الفلتر ميضيعش
+        long since = (long) call.getData().optDouble("since", 0);
+        int limit = (int) call.getData().optDouble("limit", 1000);
         JSArray list = new JSArray();
         Cursor c = null;
         try {
             c = getContext().getContentResolver().query(
                 Uri.parse("content://sms/inbox"),
                 new String[] { "_id", "address", "body", "date" },
-                "date > ?",
-                new String[] { String.valueOf(since) },
+                "date > " + since,
+                null,
                 "date DESC"
             );
             while (c != null && c.moveToNext() && list.length() < limit) {
+                if (c.getLong(3) <= since) continue;
                 JSObject o = new JSObject();
                 o.put("id", c.getString(0));
                 o.put("address", c.getString(1));

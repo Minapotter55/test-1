@@ -455,12 +455,14 @@
       <div class="actions">${isNew ? '' : '<button class="btn danger" id="aDel">حذف</button>'}<button class="btn primary" id="aSave">حفظ</button></div>`, sh => {
       $$('[data-unlink]', sh).forEach(b => b.onclick = () => { acc.smsSenders = acc.smsSenders.filter(x => x !== b.dataset.unlink); b.remove(); save(); toast('اتفصلت. الرسايل الجاية منها هتروح لحساب لوحدها'); });
       const sync = $('#aSync', sh);
-      if (sync) sync.onclick = () => { acc.initial += acc.smsBalance - balanceAt(acc.id, acc.smsBalanceAt); save(); closeSheet(); render(); toast('الرصيد بقى زي البنك ✓'); };
+      if (sync) sync.onclick = () => { acc.initial += acc.smsBalance - balanceAt(acc.id, acc.smsBalanceAt); acc.calibrated = true; save(); closeSheet(); render(); toast('الرصيد بقى زي البنك ✓'); };
       $('#aSave', sh).onclick = () => {
         const name = $('#aName', sh).value.trim(); if (!name) { toast('اكتب اسم الحساب'); return; }
         const rec = isNew ? { id: uid() } : acc;
         rec.name = name; rec.type = $('#aType', sh).value;
-        rec.initial = parseFloat(MasroofyParser.normalize($('#aInit', sh).value)) || 0;
+        const newInit = parseFloat(MasroofyParser.normalize($('#aInit', sh).value)) || 0;
+        if (!isNew && Math.abs(newInit - (+rec.initial || 0)) > 0.001) rec.calibrated = false;
+        rec.initial = newInit;
         rec.keywords = $('#aKw', sh).value.split(/[،,]/).map(s => s.trim()).filter(Boolean);
         const bal = $('#aBal', sh) && $('#aBal', sh).value.trim();
         if (bal) { const target = parseFloat(MasroofyParser.normalize(bal)); if (!isNaN(target)) rec.initial += target - balance(rec.id); }
@@ -830,7 +832,7 @@
     try {
       const since = opts.since != null ? opts.since : (S.settings.sms.lastSync || monthStart());
       const res = await R.read({ since, limit: 3000 });
-      const msgs = (res && res.messages) || [];
+      const msgs = ((res && res.messages) || []).filter(m => +m.date > since);
       const newest = msgs.reduce((m, x) => Math.max(m, +x.date || 0), since);
       const added = ingestSms(msgs);
       S.settings.sms.lastSync = Math.max(S.settings.sms.lastSync || 0, newest);
@@ -846,9 +848,70 @@
     let st = {};
     try { st = await R.checkPermissions(); if (st.sms !== 'granted') st = await R.requestPermissions(); } catch (e) { /* ignore */ }
     if (st.sms !== 'granted') { smsGuide(); return; }
+    const since = await pickSince('تسجّل الرسايل من إمتى؟', 'الرسايل اللي بعد كده هتتسجل لوحدها.');
+    if (since == null) return;
     S.settings.sms.enabled = true; save();
-    await smsSync({ since: S.settings.sms.lastSync || monthStart(), manual: true });
+    await smsSync({ since, manual: true });
     if (view === 'set') renderSet();
+  }
+
+  // اختيار بداية سحب الرسايل
+  function pickSince(title, hint) {
+    const d = new Date();
+    const opts = [
+      ['today', 'من النهارده بس', new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()],
+      ['month', 'من أول الشهر ده', monthStart()],
+      ['last', 'من أول الشهر اللي فات', new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime()]
+    ];
+    return new Promise(res => {
+      openSheet(`<h3>${esc(title)}</h3><p class="hint">${esc(hint)}</p>
+        <div style="display:grid;gap:8px;margin-bottom:12px">${opts.map(([k, n]) => `<button class="btn" data-since="${k}">${n}</button>`).join('')}</div>
+        <div class="actions"><button class="btn" id="sCancel">إلغاء</button></div>`, sh => {
+        $$('[data-since]', sh).forEach(b => b.onclick = () => { closeSheet(); res(opts.find(o => o[0] === b.dataset.since)[2]); });
+        $('#sCancel', sh).onclick = () => { closeSheet(); res(null); };
+      });
+    });
+  }
+
+  // مسح اللي اتسجل من الرسايل (كله، أو القديم بس)
+  function clearSmsSheet() {
+    const all = S.txns.filter(t => t.source === 'sms');
+    const ms = monthStart();
+    const old = all.filter(t => (t.time || Date.parse(t.date)) < ms);
+    openSheet(`<h3>مسح اللي اتسجل من الرسايل</h3>
+      <p class="hint" style="font-size:14px">اتسجل من الرسايل <b class="num">${all.length}</b> عملية، منهم <b class="num">${old.length}</b> قبل الشهر ده. العمليات اللي سجلتها بإيدك أو بالصوت مش هتتلمس.</p>
+      <div style="display:grid;gap:8px;margin-bottom:12px">
+        <button class="btn" id="cOld" ${old.length ? '' : 'disabled'}>امسح اللي قبل الشهر ده بس</button>
+        <button class="btn danger" id="cAll" ${all.length ? '' : 'disabled'}>امسح كل اللي جه من الرسايل</button>
+      </div>
+      <div class="actions"><button class="btn" id="cCancel">إلغاء</button></div>`, sh => {
+      $('#cCancel', sh).onclick = closeSheet;
+      $('#cOld', sh).onclick = () => doClear(old, false);
+      $('#cAll', sh).onclick = () => doClear(all, true);
+    });
+  }
+  function doClear(list, everything) {
+    const backup = JSON.stringify({ txns: S.txns, accounts: S.accounts, smsSeen: S.smsSeen, sms: S.settings.sms, def: S.settings.defaultAccount });
+    const gone = new Set(list.map(t => t.id));
+    S.txns = S.txns.filter(t => !gone.has(t.id));
+    if (everything) { S.smsSeen = []; S.settings.sms.lastSync = Date.now(); }
+    // الحسابات اللي اتعملت من الرسايل وفضيت تتشال، والباقي رصيده يتظبط على آخر رسالة بنك
+    const keep = new Set(MasroofyDefaults.accounts.map(a => a.id));
+    S.accounts = S.accounts.filter(a => keep.has(a.id) || !(a.smsSenders || []).length || S.txns.some(t => t.accountId === a.id || t.toAccountId === a.id));
+    if (!accById(S.settings.defaultAccount)) S.settings.defaultAccount = S.accounts[0].id;
+    S.accounts.forEach(a => {
+      if (everything) a.smsSenders = [];
+      if (a.calibrated && a.smsBalance != null) {
+        if (everything) { a.initial = 0; a.calibrated = false; delete a.smsBalance; delete a.smsBalanceAt; }
+        else { a.initial = 0; a.initial = a.smsBalance - balanceAt(a.id, a.smsBalanceAt); }
+      }
+    });
+    save(); closeSheet(); render();
+    toast(`اتمسح ${list.length} عملية`, 'تراجع', () => {
+      const b = JSON.parse(backup);
+      S.txns = b.txns; S.accounts = b.accounts; S.smsSeen = b.smsSeen; S.settings.sms = b.sms; S.settings.defaultAccount = b.def;
+      save(); render(); toast('رجعت ✓');
+    });
   }
 
   function smsGuide() {
@@ -878,14 +941,16 @@
       <p class="hint">أي رسالة خصم أو إيداع أو تحويل أو سحب من البنك، فودافون كاش، اورنج كاش، اتصالات كاش، وي باي أو انستاباي بتتسجل لوحدها في الحساب الصح. رسايل الأكواد والعروض بيتجاهلها.</p>
       ${st.enabled ? `<div class="set-row"><div><div class="t">آخر تحديث</div><div class="d">${st.lastSync ? esc(dayLabel(iso(new Date(st.lastSync)))) + ' ' + new Date(st.lastSync).toLocaleTimeString('ar-EG', { hour: 'numeric', minute: '2-digit' }) : '—'}</div></div><button class="btn small" id="smsNow">حدّث دلوقتي</button></div>
         <div class="set-row"><div><div class="t">الحسابات المربوطة</div><div class="d">${linked.length ? linked.map(a => esc(a.name)).join('، ') : 'لسه مفيش رسايل اتقرت'}</div></div></div>
-        <div class="actions"><button class="btn" id="smsMonth">اسحب رسايل الشهر كله</button><button class="btn danger" id="smsOff">وقّف</button></div>`
+        <div class="actions"><button class="btn" id="smsMonth">اسحب رسايل قديمة</button><button class="btn" id="smsOff">وقّف</button></div>`
       : `<div class="actions"><button class="btn primary" id="smsOn">شغّل قراءة الرسايل</button></div>`}
+      ${S.txns.some(t => t.source === 'sms') ? '<div class="actions"><button class="btn danger" id="smsClear">امسح اللي اتسجل من الرسايل</button></div>' : ''}
     </div>`;
   }
   function bindSmsCard(el) {
     const on = $('#smsOn', el); if (on) on.onclick = enableSms;
     const now = $('#smsNow', el); if (now) now.onclick = async () => { await smsSync({ manual: true }); renderSet(); };
-    const month = $('#smsMonth', el); if (month) month.onclick = async () => { await smsSync({ since: monthStart(), manual: true }); renderSet(); };
+    const month = $('#smsMonth', el); if (month) month.onclick = async () => { const since = await pickSince('تسحب الرسايل من إمتى؟', 'الرسايل اللي اتسجلت قبل كده مش هتتكرر.'); if (since == null) return; await smsSync({ since, manual: true }); renderSet(); };
+    const clr = $('#smsClear', el); if (clr) clr.onclick = clearSmsSheet;
     const off = $('#smsOff', el); if (off) off.onclick = () => { S.settings.sms.enabled = false; save(); renderSet(); toast('وقفت قراءة الرسايل'); };
   }
 
