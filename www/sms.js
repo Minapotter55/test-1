@@ -106,8 +106,15 @@
 
   // آخر 4 أرقام من الكارت أو الحساب
   function cardOf(t) {
-    const m = t.match(/(?:بطاق[هة][^\d]{0,30}?|كارت[^\d]{0,20}?|card[^\d]{0,30}?|ending(?: with| in)?\s*|حساب(?:ك|كم)?\s*(?:رقم)?\s*[*x]*|[*x]{2,}\s*)(\d{4})(?!\d)/i);
-    return m ? m[1] : null;
+    const re = /(?:بطاق[هة][^\d]{0,30}?|كارت[^\d]{0,20}?|card[^\d]{0,30}?|ending(?: with| in)?\s*|حساب(?:ك|كم)\s*(?:رقم)?\s*[*x]*|[*x]{2,}\s*)(\d{4})(?!\d)/gi;
+    let m;
+    while ((m = re.exec(t))) {
+      // "إلى حساب ****1234" أو "to ****1234" ده حساب اللي استلم، مش كارتك
+      const before = t.slice(Math.max(0, m.index - 14), m.index);
+      if (/(الي|لحساب|للحساب|للمستفيد|لصالح|to|beneficiary)\s*$/i.test(before)) continue;
+      return m[1];
+    }
+    return null;
   }
 
   // ماكينات البنوك بتظهر باسم البنك في أولها: "BM KHARGA HOSPITAL"، "NBE ATM ..."

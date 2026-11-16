@@ -35,6 +35,8 @@ check('NBE', 'تم خصم 350 EGP من بطاقة الدفع المقدم رقم
 check('CIB', 'Your CIB credit card ending with 4321 was charged for EGP 50.00 at UBER', { card: '4321' });
 check('AlAhly', 'تم خصم 300 EGP من بطاقة الدفع المقدم رقم7803 عندNBE ATM EL WADI      A يوم16/11/26 الساعة12:13 المتاح1200.00EGP', { kind: 'atm', card: '7803', merchant: 'NBE ATM EL WADI', balance: 1200 });
 check('AlAhly', 'تم خصم 85 EGP من بطاقة الدفع المقدم رقم4678 عندTALABAT      A يوم16/11/26', { kind: 'expense', merchant: 'TALABAT' });
+check('InstaPay', 'تم تحويل 500 جنيه من حسابك رقم ***4678 الى حساب ****9911 بنجاح عن طريق انستاباي', { kind: 'expense', card: '4678' });
+check('InstaPay', 'Transfer of EGP 200 to ****5566 was successful via InstaPay', { kind: 'expense', card: null });
 // لازم تتجاهل
 check('CIB', 'Your OTP for transaction of EGP 500 at NOON is 482913. Do not share it.', null);
 check('Vodafone', 'استمتع بخصم 50% على باقات الانترنت! اتصل ب 888', null);

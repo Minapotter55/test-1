@@ -22,7 +22,7 @@
   const DAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
 
   /* ---------- الحفظ ---------- */
-  const SMS_DEFAULTS = { enabled: false, lastSync: 0, review: false, minAmount: 0, atmMode: 'transfer', pair: true, ignored: [] };
+  const SMS_DEFAULTS = { enabled: false, lastSync: 0, review: false, minAmount: 0, atmMode: 'transfer', pair: true, ignored: [], senderMap: {} };
   function fresh() {
     return {
       version: 1,
@@ -57,6 +57,9 @@
     d.smsSeen = d.smsSeen || [];
     d.smsRules = d.smsRules || [];
     d.smsPending = d.smsPending || [];
+    d.settings.sms.senderMap = d.settings.sms.senderMap || {};
+    // الكروت اللي كانت متسجله قبل كده نعتبرها انت اللي كاتبها
+    d.accounts.forEach(a => { if (!a.manualCards) a.manualCards = (a.cards || []).slice(); });
     return d;
   }
   let S = load();
@@ -488,14 +491,20 @@
         if (!(amt > 0)) { $('#fAmount', sh).focus(); toast('اكتب المبلغ الأول'); return; }
         if (d.type === 'transfer' && d.accountId === d.toAccountId) { toast('اختار حسابين مختلفين'); return; }
         const rec = { id: d.id || uid(), type: d.type, amount: amt, categoryId: d.type === 'transfer' ? null : d.categoryId, accountId: d.accountId, toAccountId: d.type === 'transfer' ? d.toAccountId : null, date: d.date, note: d.note.trim(), createdAt: d.createdAt || new Date().toISOString(), source: d.source || 'manual', text: d.text };
-        ['sms', 'merchant', 'time', 'smsFrom'].forEach(k => { if (d[k] != null) rec[k] = d[k]; });
+        ['sms', 'merchant', 'time', 'smsFrom', 'smsCard'].forEach(k => { if (d[k] != null) rec[k] = d[k]; });
         if (!isNew) {
           const old = S.txns.find(t => t.id === rec.id);
           if (old && old.categoryId !== rec.categoryId && rec.categoryId) {
             if (old.source === 'sms' && old.merchant) upsertRule(old.merchant, rec.categoryId);
             else if (old.source === 'voice' || old.source === 'sms') learn(Object.assign({}, rec, { note: old.merchant || rec.note }));
           }
+          const accChanged = old && old.source === 'sms' && old.accountId !== rec.accountId;
+          const snapshot = old ? { smsFrom: old.smsFrom, smsCard: old.smsCard } : null;
           Object.assign(old, rec);
+          save(); closeSheet(); render();
+          if (!(accChanged && offerRemember(snapshot, rec.accountId))) toast('اتعدلت ✓');
+          opts.onSaved && opts.onSaved(rec);
+          return;
         } else S.txns.push(rec);
         save(); closeSheet(); render(); toast(isNew ? 'اتسجلت ✓' : 'اتعدلت ✓');
         opts.onSaved && opts.onSaved(rec);
@@ -543,7 +552,7 @@
         const cards = [...new Set((N($('#aCards', sh).value).match(/\d+/g) || []).map(x => x.slice(-4)).filter(x => x.length === 4))];
         if (isNew) S.accounts.push(rec);
         let movedCards = 0;
-        (rec.cards || []).filter(c => !cards.includes(c)).forEach(c => { rec.cards = rec.cards.filter(x => x !== c); });
+        (rec.cards || []).filter(c => !cards.includes(c)).forEach(c => { rec.cards = rec.cards.filter(x => x !== c); rec.manualCards = (rec.manualCards || []).filter(x => x !== c); });
         cards.forEach(c => { movedCards += linkCard(c, rec.id); });
         if (movedCards) setTimeout(() => toast(`اتنقل ${movedCards} عملية للحساب ده حسب رقم الكارت`), 2300);
         const bal = $('#aBal', sh) && $('#aBal', sh).value.trim();
@@ -818,7 +827,12 @@
   let createdAccounts = [];
   const pidFor = (address, provider) => provider ? provider.id : 'sender:' + (address || '').trim();
   const cardOwner = card => card ? S.accounts.find(x => (x.cards || []).includes(card)) : null;
+  const manualCardOwner = card => card ? S.accounts.find(x => (x.manualCards || []).includes(card)) : null;
   function accountForSms(address, provider, pasted, dry, card) {
+    const manual = manualCardOwner(card);
+    if (manual) return manual;
+    const chosen = accById((S.settings.sms.senderMap || {})[pidFor(address, provider)]);
+    if (chosen) return chosen;
     const byCard = cardOwner(card);
     if (byCard) return byCard;
     const a = accountForSender(address, provider, pasted, dry);
@@ -1143,8 +1157,8 @@
 
   // يربط الكارت بحساب ويشيله من أي حساب تاني، وينقل عملياته القديمه
   function linkCard(cd, accId) {
-    S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== cd); });
-    const a = accById(accId); a.cards = a.cards || []; a.cards.push(cd);
+    S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== cd); a.manualCards = (a.manualCards || []).filter(x => x !== cd); });
+    const a = accById(accId); a.cards = a.cards || []; a.cards.push(cd); a.manualCards = a.manualCards || []; a.manualCards.push(cd);
     let moved = 0;
     S.txns.forEach(t => {
       if (t.smsCard !== cd) return;
@@ -1152,6 +1166,37 @@
       else if (t.accountId !== a.id) { t.accountId = a.id; moved++; }
     });
     return moved;
+  }
+
+  function moveSenderTxns(pid, accId, card) {
+    let moved = 0;
+    S.txns.forEach(t => {
+      if (t.source !== 'sms') return;
+      const mine = (card && t.smsCard === card) || (t.smsFrom === pid && !(t.smsCard && manualCardOwner(t.smsCard) && manualCardOwner(t.smsCard).id !== accId));
+      if (!mine) return;
+      if (t.type === 'transfer') { if (t.accountId !== accId && t.toAccountId !== accId) { t.accountId = accId; moved++; } }
+      else if (t.accountId !== accId) { t.accountId = accId; moved++; }
+    });
+    return moved;
+  }
+
+  // لما تغيّر حساب عمليه جت من رساله، نسألك تخلي رسايل الجهه/الكارت ده تروح هناك دايماً
+  function offerRemember(old, accId) {
+    const pid = old.smsFrom, card = old.smsCard;
+    if (!pid && !card) return false;
+    const a = accById(accId); if (!a) return false;
+    const label = card && pid ? `«${senderLabel(pid)}» (كارت ${card})` : card ? `كارت ${card}` : `«${senderLabel(pid)}»`;
+    toast(`اتعدلت ✓ · تخلي رسايل ${esc(label)} تتسجل دايماً على «${esc(a.name)}»؟`, 'أيوه، دايماً', () => {
+      const before = JSON.stringify({ txns: S.txns, accounts: S.accounts, map: S.settings.sms.senderMap });
+      if (card) linkCard(card, a.id);
+      if (pid) S.settings.sms.senderMap[pid] = a.id;
+      const moved = moveSenderTxns(pid, a.id, card);
+      save(); render();
+      toast(`تمام، رسايل ${esc(label)} هتروح لـ «${esc(a.name)}»${moved ? ` · واتنقل ${moved} عملية قديمة` : ''}`, 'تراجع', () => {
+        const b = JSON.parse(before); S.txns = b.txns; S.accounts = b.accounts; S.settings.sms.senderMap = b.map; save(); render(); toast('رجعت ✓');
+      });
+    });
+    return true;
   }
 
   function smsControlSheet(keepTest) {
@@ -1208,10 +1253,11 @@
         const pid = sel.dataset.sender, target = sel.value;
         S.accounts.forEach(a => { a.smsSenders = (a.smsSenders || []).filter(x => x !== pid); });
         st.ignored = (st.ignored || []).filter(x => x !== pid);
+        delete st.senderMap[pid];
         if (target === '__ignore') { st.ignored.push(pid); save(); toast(`مش هيسجل رسايل «${esc(senderLabel(pid))}» تاني`); return redraw(); }
         const a = accById(target); a.smsSenders = a.smsSenders || []; a.smsSenders.push(pid);
-        let moved = 0;
-        S.txns.forEach(t => { if (t.smsFrom === pid && t.accountId !== a.id && t.toAccountId !== a.id) { t.accountId = a.id; moved++; } });
+        st.senderMap[pid] = a.id;
+        const moved = moveSenderTxns(pid, a.id);
         save(); toast(`رسايل «${esc(senderLabel(pid))}» هتروح لـ «${esc(a.name)}»${moved ? ` · اتنقل ${moved} عملية قديمة` : ''}`); redraw();
       });
       $$('[data-card]', sh).forEach(sel => sel.onchange = () => {
