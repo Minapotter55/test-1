@@ -12,7 +12,7 @@
     { id: 'wepay', name: 'وي باي', type: 'wallet', re: /(we ?pay|وي ?باي)/ },
     { id: 'telda', name: 'تيلدا', type: 'bank', re: /telda|تيلدا/ },
     { id: 'cib', name: 'CIB', type: 'bank', re: /\bcib\b|التجاري الدولي/ },
-    { id: 'nbe', name: 'البنك الأهلي', type: 'bank', re: /\bnbe\b|ahly ?bank|البنك الاهلي|الاهلي المصري/ },
+    { id: 'nbe', name: 'البنك الأهلي', type: 'bank', re: /\bnbe\b|ahly|البنك الاهلي|الاهلي المصري|الاهلي/ },
     { id: 'misr', name: 'بنك مصر', type: 'bank', re: /banque ?misr|bank ?misr|\bbm\b|بنك مصر/ },
     { id: 'qnb', name: 'QNB', type: 'bank', re: /\bqnb\b/ },
     { id: 'aaib', name: 'البنك العربي الأفريقي', type: 'bank', re: /\baaib\b/ },
@@ -43,7 +43,7 @@
   const DEBIT_SOFT = /(sent|transferred to|transfer to|transfer of .{0,30} to |تحويل .{0,40}(الي|لرقم|لحساب|ل \d|ل\d)|تم ارسال|ارسال)/;
   const CREDIT = /(ايداع|اضافه|استلام|استلمت|وارد|وارده|credited|received|deposit|added to|الي حسابك|لحسابك|اليك|to your account|into your|تحويل لحظي من|حواله من|من رقم)/;
   const TRANSFER = /(تحويل|transfer|instapay|انستاباي|انستا باي|ipn|حواله|ارسال|sent|received|استلام)/;
-  const BALANCE = new RegExp('(رصيد(?:ك|كم)?(?: الحالي| المتاح| الجديد| حسابك)?|(?:available |avl |avail |new |current )?bal(?:ance)?)\\s*(?:هو|is|:)?\\s*' + CUR + '?\\s*' + NUM);
+  const BALANCE = new RegExp('(رصيد(?:ك|كم)?(?: الحالي| المتاح| الجديد| حسابك)?|الرصيد المتاح|المتاح|(?:available |avl |avail |new |current )?bal(?:ance)?)\\s*(?:هو|is|:)?\\s*' + CUR + '?\\s*' + NUM);
 
   function providerFor(text) {
     const t = N(text);
@@ -74,7 +74,7 @@
       /\b(?:at|@|merchant:?)\s+([A-Za-z0-9][A-Za-z0-9 &'._\-]{1,40}?)(?=\s+on\b|\s+in\b|\s+dated|\s+at\b|[,;]|\.\s|\.$|\s+\d{1,2}[\/-]|$)/i,
       /(?:^|[\s،,.])(?:لرقم|للرقم|to number|to mobile)\s*(\+?\d[\d\s]{7,14}\d)/i,
       /(?:^|[\s،,.])(?:من رقم|from number|from mobile|from)\s*(\+?\d[\d\s]{7,14}\d)/i,
-      /(?:^|[\s،,.])(?:لدى|لدي|لدىّ|عند|من عند|في متجر|بمتجر|التاجر)\s+([^\s،,.]+(?:\s+[^\s،,.\d]+){0,3}?)(?=\s+(?:بتاريخ|يوم|في|الساعه|الساعة|رصيد|برقم)|[،,.]|$)/,
+      /(?:^|[\s،,.])(?:لدى|لدي|لدىّ|عند|من عند|في متجر|بمتجر|التاجر)\s+([^\s،,.]+(?:\s+[^\s،,.\d]+){0,6}?)(?=\s+(?:بتاريخ|يوم|في|الساعه|الساعة|رصيد|برقم)|[،,.]|$)/,
       /\b(?:to|for)\s+([A-Za-z][A-Za-z0-9 &'._\-]{1,40}?)(?=\s+on\b|\s+via\b|\s+ref|\s+from\b|\s+was\b|\s+is\b|\s+has\b|\s+successful|[,;]|\.\s|\.$|$)/i,
       /(?:^|[\s،,.])(?:الى|إلى|الي|إلي|لصالح|للمستفيد)\s+([^\s،,.]+(?:\s+[^\s،,.\d]+){0,3}?)(?=\s+(?:بنجاح|بتاريخ|يوم|رقم|برقم|عن طريق|من)|[،,.]|$)/,
       /\b(?:from)\s+([A-Za-z][A-Za-z0-9 &'._\-]{1,40}?)(?=\s+on\b|\s+via\b|\s+ref|\s+was\b|\s+has\b|[,;]|\.\s|\.$|$)/i,
@@ -83,9 +83,10 @@
     for (const re of pats) {
       const m = o.match(re);
       if (m && m[1]) {
-        const s = m[1].trim().replace(/\s+/g, ' ');
+        const s = m[1].trim().replace(/\s+/g, ' ').replace(/\s+[A-Za-z]$/, ''); // حرف لوحده في الآخر ده كود الماكينه
         if (/^(your|ur|you|the|card|account|حساب|بطاق|EGP|LE)\b/i.test(s)) continue;
-        if (providerFor(s)) continue; // اسم البنك أو المحفظه نفسها مش هو التاجر
+        const pv = providerFor(s); // اسم البنك أو المحفظه لوحده مش هو التاجر
+        if (pv && N(s).replace(pv.re, '').trim().length < 3) continue;
         if (s.length >= 2) return s;
       }
     }
@@ -96,8 +97,27 @@
    * parse({address, body, date}) => null أو
    * { kind: 'expense'|'income'|'atm', amount, isTransfer, merchant, provider, balance, date, key }
    */
+  // البنوك ساعات بتلزق الكلام في الأرقام والإنجليزي ("رقم4678 عندBM")، فنفصلهم الأول
+  function spaced(text) {
+    return String(text || '')
+      .replace(/([\u0600-\u065F\u066A-\u06FF])(?=[A-Za-z0-9٠-٩])/g, "$1 ")
+      .replace(/([A-Za-z0-9٠-٩])(?=[\u0600-\u065F\u066A-\u06FF])/g, "$1 ");
+  }
+
+  // آخر 4 أرقام من الكارت أو الحساب
+  function cardOf(t) {
+    const m = t.match(/(?:بطاق[هة][^\d]{0,30}?|كارت[^\d]{0,20}?|card[^\d]{0,30}?|ending(?: with| in)?\s*|حساب(?:ك|كم)?\s*(?:رقم)?\s*[*x]*|[*x]{2,}\s*)(\d{4})(?!\d)/i);
+    return m ? m[1] : null;
+  }
+
+  // ماكينات البنوك بتظهر باسم البنك في أولها: "BM KHARGA HOSPITAL"، "NBE ATM ..."
+  const ATM_MERCHANT = /^(bm|nbe|cib|qnb|bdc|aaib|alex ?bank|banque misr|bank misr|ahly|al ahly|adib|saib|faisal|hsbc)\b|\batm\b/i;
+
+  // أرقام خدمة العملاء بتقول الرساله من أنهي بنك
+  const HOTLINES = { '19623': 'nbe', '19888': 'misr', '19666': 'cib', '19700': 'qnb' };
+
   function parse(msg) {
-    const body = String(msg.body || '');
+    const body = spaced(msg.body);
     const t = N(body);
     if (!t || OTP.test(t)) return null;
     const amount = findAmount(t);
@@ -105,7 +125,9 @@
     const hasCur = new RegExp('(^|\\W|\\d)' + CUR + '(\\W|$|\\d)').test(t);
     const debitHard = DEBIT_HARD.test(t), debitSoft = DEBIT_SOFT.test(t), credit = CREDIT.test(t), refund = REFUND.test(t);
     let kind = null;
+    const merchant = merchantOf(body);
     if (ATM.test(t) && /(سحب|withdraw)/.test(t)) kind = 'atm';
+    else if (merchant && ATM_MERCHANT.test(merchant) && /(خصم|debited|withdraw|سحب)/.test(t)) kind = 'atm';
     else if (refund) kind = 'income';
     else if (debitHard && !(credit && /(الي حسابك|لحسابك|اليك|to your account|into your|credited)/.test(t) && !/(خصم|debited|charged)/.test(t))) kind = 'expense';
     else if (credit) kind = 'income';
@@ -114,12 +136,19 @@
     let balance = null;
     const reB = new RegExp(BALANCE.source, 'g'); let bm;
     while ((bm = reB.exec(t))) { if (!/^0\d{9,}$/.test(bm[2])) { balance = num(bm[2]); break; } }
-    const provider = (!isPhoneSender(msg.address) && providerFor(msg.address || '')) || providerFor(body);
+    // البنك من اسم المرسل. نص الرساله بس لو مفيش مرسل (رساله ملصوقه)، ومن غير اسم المحل/الماكينه عشان "BM" متتفهمش بنك مصر
+    const hot = Object.keys(HOTLINES).find(h => t.includes(h));
+    const hotProv = hot ? PROVIDERS.find(x => x.id === HOTLINES[hot]) : null;
+    const addr = String(msg.address || '').trim();
+    const provider = addr
+      ? ((!isPhoneSender(addr) && providerFor(addr)) || hotProv)
+      : (hotProv || providerFor(merchant ? body.replace(/\s+/g, ' ').split(merchant).join(' ') : body));
     const date = msg.date ? new Date(+msg.date) : new Date();
     return {
       kind, amount,
       isTransfer: kind !== 'atm' && TRANSFER.test(t),
-      merchant: merchantOf(body),
+      merchant,
+      card: cardOf(t),
       provider,
       balance,
       date, time: date.getTime(),

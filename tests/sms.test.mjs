@@ -27,6 +27,14 @@ check('Orange Cash', 'You received 250 EGP from 01276543210. Your Orange Cash ba
 check('OrangeMoney', 'تم دفع 150 جنيه لشحن رصيد 01212345678 بنجاح. رصيدك 750 جنيه', { kind: 'expense', amount: 150, provider: 'orange', balance: 750 });
 check('etisalat', 'عزيزي العميل تم شراء بمبلغ 85 جنيه من اوبر باستخدام اتصالات كاش', { kind: 'expense', amount: 85, provider: 'etisalat' });
 check('CIB', 'Refund of EGP 320.00 from AMAZON EG has been credited to your card ending 4321', { kind: 'income', amount: 320 });
+// كروت الدفع المقدم: سحب من ماكينة بنك مصر برقم الكارت لازقة في الكلام
+check('NBE', 'تم خصم 100 EGP من بطاقة الدفع المقدم رقم4678 عندBM KHARGA HOSPITAL      A يوم16/11/26 الساعة12:13 المتاح2469.05EGP  للمزيد اتصل ب ١٩٦٢٣', { kind: 'atm', amount: 100, card: '4678', balance: 2469.05, provider: 'nbe' });
+check('AlAhly', 'تم خصم 100 EGP من بطاقة الدفع المقدم رقم7803 عندBM KHARGA HOSPITAL      A يوم16/11/26', { kind: 'atm', card: '7803', provider: 'nbe' });
+check('', 'تم خصم 100 EGP من بطاقة الدفع المقدم رقم4678 عندBM KHARGA HOSPITAL      A يوم16/11/26 المتاح2469.05EGP للمزيد اتصل ب ١٩٦٢٣', { kind: 'atm', provider: 'nbe' });
+check('NBE', 'تم خصم 350 EGP من بطاقة الدفع المقدم رقم4678 عندCARREFOUR KHARGA يوم16/11/26 الساعة12:13 المتاح2119.05EGP', { kind: 'expense', amount: 350, card: '4678', merchant: 'CARREFOUR KHARGA', balance: 2119.05 });
+check('CIB', 'Your CIB credit card ending with 4321 was charged for EGP 50.00 at UBER', { card: '4321' });
+check('AlAhly', 'تم خصم 300 EGP من بطاقة الدفع المقدم رقم7803 عندNBE ATM EL WADI      A يوم16/11/26 الساعة12:13 المتاح1200.00EGP', { kind: 'atm', card: '7803', merchant: 'NBE ATM EL WADI', balance: 1200 });
+check('AlAhly', 'تم خصم 85 EGP من بطاقة الدفع المقدم رقم4678 عندTALABAT      A يوم16/11/26', { kind: 'expense', merchant: 'TALABAT' });
 // لازم تتجاهل
 check('CIB', 'Your OTP for transaction of EGP 500 at NOON is 482913. Do not share it.', null);
 check('Vodafone', 'استمتع بخصم 50% على باقات الانترنت! اتصل ب 888', null);
