@@ -216,7 +216,7 @@
     const pend = $('#pendOpen', el); if (pend) pend.addEventListener('click', pendingSheet);
     const all = $('#seeAll', el); if (all) all.addEventListener('click', () => go('tx'));
     $$('[data-tx]', el).forEach(b => b.addEventListener('click', () => openTxSheet(S.txns.find(t => t.id === b.dataset.tx))));
-    $$('[data-acc]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'all', acc: b.dataset.acc, cat: '', q: '' }; go('tx'); }));
+    $$('[data-acc]', el).forEach(b => b.addEventListener('click', () => openAccDetails(b.dataset.acc)));
     $$('[data-legend-cat]', el).forEach(b => b.addEventListener('click', () => { txFilter = { type: 'expense', acc: '', cat: b.dataset.legendCat, q: '' }; go('tx'); }));
   }
 
@@ -300,7 +300,7 @@
     list.forEach(t => { (groups[t.date] = groups[t.date] || []).push(t); });
     // شريط التصنيفات: كل تصنيفات التطبيق (حسب نوع الفلتر)، واللي فيها عمليات الشهر ده الأول ومعاها إجماليها
     const catSum = {};
-    S.txns.filter(inMonth).forEach(t => { if (t.categoryId) catSum[t.categoryId] = (catSum[t.categoryId] || 0) + t.amount; });
+    S.txns.filter(inMonth).forEach(t => { if (t.categoryId && (!txFilter.acc || t.accountId === txFilter.acc)) catSum[t.categoryId] = (catSum[t.categoryId] || 0) + t.amount; });
     const catList = S.categories
       .filter(c => c.id === txFilter.cat || (txFilter.type === 'all' ? true : txFilter.type === c.kind))
       .map((c, i) => ({ c, v: catSum[c.id] || 0, i }))
@@ -379,15 +379,62 @@
         <div class="card-head"><h2>حساباتك</h2><span class="sub">الإجمالي ${money(total)} ${esc(S.settings.currency)}</span></div>
         <div class="list">${S.accounts.map(a => `
           <button class="tx" data-edit-acc="${esc(a.id)}"><span class="tx-ic" style="background:color-mix(in srgb, ${ACC_COLORS[a.type] || ACC_COLORS.other} 16%, var(--surface));color:${ACC_COLORS[a.type] || ACC_COLORS.other}">${accIcon(a.type)}</span>
-          <span class="tx-main"><div class="tx-t">${esc(a.name)}</div><div class="tx-s">${ACC_TYPES[a.type] || ''}${a.id === S.settings.defaultAccount ? ' · الافتراضي' : ''}</div></span>
+          <span class="tx-main"><div class="tx-t">${esc(a.name)}</div><div class="tx-s">${(sp => sp ? `صرفت منه ${fmt(sp)} في ${MONTHS[cur.m]}` : `مصرفتش منه حاجة في ${MONTHS[cur.m]}`)(S.txns.filter(t => inMonth(t) && t.type === 'expense' && t.accountId === a.id).reduce((x, t) => x + t.amount, 0))}${a.id === S.settings.defaultAccount ? ' · الافتراضي' : ''}</div></span>
           <span class="tx-a num">${fmt(balance(a.id))}</span></button>`).join('')}</div>
       </div>
       <div class="actions"><button class="btn primary" id="addAcc">+ حساب جديد</button><button class="btn" id="doTransfer">⇄ تحويل بين حساباتك</button></div>
       <p class="hint">الرصيد = الرصيد الافتتاحي + الدخل − المصاريف ± التحويلات. عدّل الرصيد الافتتاحي لو عايز الرقم يطابق اللي معاك فعلاً.</p>`;
-    $$('[data-edit-acc]', el).forEach(b => b.addEventListener('click', () => openAccSheet(accById(b.dataset.editAcc))));
+    $$('[data-edit-acc]', el).forEach(b => b.addEventListener('click', () => openAccDetails(b.dataset.editAcc)));
     $('#addAcc', el).addEventListener('click', () => openAccSheet(null));
     $('#doTransfer', el).addEventListener('click', () => openTxSheet({ type: 'transfer' }));
   }
+  // تفاصيل الحساب: صرفت منه على إيه في الشهر، وآخر عملياته
+  function openAccDetails(accId, ym) {
+    const a = accById(accId); if (!a) return;
+    ym = ym || { y: cur.y, m: cur.m };
+    const key = monthKey(ym.y, ym.m);
+    const mine = t => t.accountId === a.id || t.toAccountId === a.id;
+    const all = S.txns.filter(mine).sort(sortTx);
+    const month = all.filter(t => t.date.slice(0, 7) === key);
+    const spent = month.filter(t => t.type === 'expense' && t.accountId === a.id);
+    const spentSum = spent.reduce((x, t) => x + t.amount, 0);
+    const inSum = month.filter(t => t.type === 'income' && t.accountId === a.id).reduce((x, t) => x + t.amount, 0);
+    const outTr = month.filter(t => t.type === 'transfer' && t.accountId === a.id).reduce((x, t) => x + t.amount, 0);
+    const inTr = month.filter(t => t.type === 'transfer' && t.toAccountId === a.id).reduce((x, t) => x + t.amount, 0);
+    const byCat = {};
+    spent.forEach(t => { byCat[t.categoryId] = byCat[t.categoryId] || { v: 0, n: 0 }; byCat[t.categoryId].v += t.amount; byCat[t.categoryId].n++; });
+    const used = Object.entries(byCat).map(([id, x]) => ({ c: catById(id) || { id, name: 'محذوف', icon: '•', color: '#7A8BA8' }, id, ...x })).sort((p, q) => q.v - p.v);
+    const unused = S.categories.filter(c => c.kind === 'expense' && !byCat[c.id]);
+    const lastOut = all.find(t => t.type === 'expense' && t.accountId === a.id);
+    const max = used.length ? used[0].v : 1;
+    const prev = ym.m === 0 ? { y: ym.y - 1, m: 11 } : { y: ym.y, m: ym.m - 1 };
+    const next = ym.m === 11 ? { y: ym.y + 1, m: 0 } : { y: ym.y, m: ym.m + 1 };
+    openSheet(`<div class="acc-head"><h3>${esc(a.name)}</h3><div class="num acc-bal">${fmt(balance(a.id))} <small>${esc(S.settings.currency)}</small></div></div>
+      <div class="month mini-month"><button id="adNext" aria-label="الشهر اللي بعده"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button><span>${MONTHS[ym.m]} ${ym.y}</span><button id="adPrev" aria-label="الشهر اللي قبله"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button></div>
+      <div class="acc-stats">
+        <div><div class="k">صرفت منه</div><div class="v num">${fmt(spentSum)}</div></div>
+        <div><div class="k">دخل عليه</div><div class="v num">${fmt(inSum)}</div></div>
+        <div><div class="k">حوّلت منه</div><div class="v num">${fmt(outTr)}</div></div>
+        <div><div class="k">حوّلت عليه</div><div class="v num">${fmt(inTr)}</div></div>
+      </div>
+      <div class="sec-title">صرفت منه على إيه؟</div>
+      ${used.length ? used.map(x => `<button class="cat-bar" data-adcat="${esc(x.id)}">
+          <span class="cb-top"><span>${esc(x.c.icon)} ${esc(x.c.name)} <span class="cb-n">· ${x.n} ${x.n === 1 ? 'عملية' : 'عمليات'}</span></span><b class="num">${fmt(x.v)}</b></span>
+          <span class="cb-track"><i style="width:${(x.v / max * 100).toFixed(1)}%;background:${x.c.color}"></i></span></button>`).join('')
+        : `<p class="hint">مصرفتش حاجة من الحساب ده في ${MONTHS[ym.m]}.${lastOut ? ` آخر صرف منه: ${esc(dayLabel(lastOut.date))} (${fmt(lastOut.amount)} على ${esc((catById(lastOut.categoryId) || {}).name || '')}).` : ''}</p>`}
+      ${used.length && unused.length ? `<p class="hint">مصرفتش منه على: ${unused.map(c => esc(c.icon + ' ' + c.name)).join('، ')}</p>` : ''}
+      <div class="sec-title">آخر عملياته</div>
+      ${all.length ? `<div class="list">${all.slice(0, 6).map(t => txRow(t)).join('')}</div>` : '<p class="hint">مفيش عمليات على الحساب ده لسه.</p>'}
+      <div class="actions" style="margin-top:12px"><button class="btn" id="adEdit">تعديل الحساب</button><button class="btn primary" id="adAll">كل عملياته</button></div>`, sh => {
+      $('#adPrev', sh).onclick = () => openAccDetails(a.id, prev);
+      $('#adNext', sh).onclick = () => openAccDetails(a.id, next);
+      $('#adEdit', sh).onclick = () => openAccSheet(a);
+      $('#adAll', sh).onclick = () => { closeSheet(); cur = { y: ym.y, m: ym.m }; txFilter = { type: 'all', acc: a.id, cat: '', q: '' }; go('tx'); };
+      $$('[data-adcat]', sh).forEach(b => b.onclick = () => { closeSheet(); cur = { y: ym.y, m: ym.m }; txFilter = { type: 'expense', acc: a.id, cat: b.dataset.adcat, q: '' }; go('tx'); });
+      $$('[data-tx]', sh).forEach(b => b.onclick = () => openTxSheet(S.txns.find(t => t.id === b.dataset.tx)));
+    });
+  }
+
   function accIcon(type) {
     const p = { cash: '<path d="M3 7h18v10H3z"/><circle cx="12" cy="12" r="2.5"/>', wallet: '<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/>', instapay: '<path d="M3 10l9-6 9 6M5 10v8M19 10v8M9.5 10v8M14.5 10v8M3 20h18"/>', bank: '<path d="M3 10l9-6 9 6M5 10v8M19 10v8M3 20h18"/>', other: '<circle cx="12" cy="12" r="8"/>' }[type] || '<circle cx="12" cy="12" r="8"/>';
     return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
