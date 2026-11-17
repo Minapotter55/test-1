@@ -63,7 +63,26 @@
     return d;
   }
   let S = load();
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ } pushWidget(); }
+
+  // ويدجت الشاشه الرئيسيه (أندرويد): صرف النهارده والشهر
+  let widgetTimer;
+  function pushWidget() {
+    clearTimeout(widgetTimer);
+    widgetTimer = setTimeout(() => {
+      const W = plugin('Widget'); if (!W) return;
+      const day = iso(new Date()), mon = day.slice(0, 7);
+      const exp = S.txns.filter(t => t.type === 'expense');
+      const sum = list => list.reduce((x, t) => x + t.amount, 0);
+      const monthSum = sum(exp.filter(t => t.date.slice(0, 7) === mon));
+      let line2 = `الشهر ${fmt(monthSum)}`;
+      if (S.budget.monthly > 0) { const left = S.budget.monthly - monthSum; line2 += left >= 0 ? ` · فاضل ${fmt(left)}` : ' · عديت الميزانية'; }
+      else line2 += ` · رصيدك ${fmt(S.accounts.reduce((x, a) => x + balance(a.id), 0))}`;
+      if (S.smsPending.length) line2 = `📩 ${S.smsPending.length} مستنية موافقتك · ` + line2;
+      const r = W.update({ day, month: mon, todayText: fmt(sum(exp.filter(t => t.date === day))), line2, currency: S.settings.currency });
+      if (r && r.catch) r.catch(() => {});
+    }, 400);
+  }
 
   /* ---------- أدوات ---------- */
   const fmt = n => {
@@ -1343,6 +1362,19 @@
     });
   }
 
+  // أزرار الويدجت بتفتح التطبيق بلينك: masroofy://voice أو masroofy://add
+  let lastWidget = { a: '', t: 0 };
+  function handleWidgetUrl(url) {
+    const a = String(url || '').replace(/^masroofy:\/\//, '').replace(/\/+$/, '');
+    if (!/^(voice|add|open)$/.test(a)) return;
+    const now = Date.now();
+    if (a === lastWidget.a && now - lastWidget.t < 2000) return;
+    lastWidget = { a, t: now };
+    closeSheet();
+    if (a === 'voice') { if (view !== 'home') go('home'); setTimeout(() => { if (!micBtn.classList.contains('listening')) micBtn.click(); }, 400); }
+    else if (a === 'add') setTimeout(() => openTxSheet(null), 150);
+  }
+
   /* ---------- تشغيل ---------- */
   applyTheme();
   go('home');
@@ -1353,10 +1385,13 @@
     const App = plugin('App');
     if (App && App.addListener) {
       App.addListener('backButton', () => { if ($('#scrim')) closeSheet(); else if (sel) { sel = null; renderTx(); } else if (view !== 'home') go('home'); else App.exitApp(); });
-      App.addListener('resume', () => smsSync());
+      App.addListener('resume', () => { smsSync(); pushWidget(); });
+      App.addListener('appUrlOpen', e => handleWidgetUrl(e && e.url));
+      if (App.getLaunchUrl) App.getLaunchUrl().then(r => r && handleWidgetUrl(r.url)).catch(() => {});
     }
     const R = smsPlugin();
     if (R && R.addListener) R.addListener('sms', m => { if (!S.settings.sms.enabled) return; const added = ingestSms([m]); if (added.length || added.pending.length) announceSms(added); });
     smsSync();
+    pushWidget();
   }
 })();

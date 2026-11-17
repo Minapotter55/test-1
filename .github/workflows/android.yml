@@ -48,6 +48,8 @@ jobs:
         run: |
           JAVA_DIR=android/app/src/main/java/com/masroofy/app
           cp resources/android/java/*.java "$JAVA_DIR/"
+          # الويدجت: الشكل والأيقونات
+          cp -r resources/android/res/. android/app/src/main/res/
           python3 - <<'PY'
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p).read()
@@ -61,7 +63,13 @@ jobs:
                   </intent>
               </queries>
           </manifest>""")
-          s = s.replace('</application>', """    <receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
+          s = s.replace('</application>', """    <receiver android:name=".MasroofyWidget" android:exported="false" android:label="مصروفي">
+                      <intent-filter>
+                          <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                      </intent-filter>
+                      <meta-data android:name="android.appwidget.provider" android:resource="@xml/masroofy_widget_info" />
+                  </receiver>
+                  <receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
                       <intent-filter android:priority="999">
                           <action android:name="android.provider.Telephony.SMS_RECEIVED" />
                       </intent-filter>
