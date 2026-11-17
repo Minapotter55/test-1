@@ -2,8 +2,16 @@
   "appId": "com.masroofy.app",
   "appName": "مصروفي",
   "webDir": "www",
-  "android": { "allowMixedContent": false },
+  "android": {
+    "allowMixedContent": false
+  },
   "plugins": {
-    "StatusBar": { "overlaysWebView": true }
+    "StatusBar": {
+      "overlaysWebView": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_masroofy",
+      "iconColor": "#0866FF"
+    }
   }
 }

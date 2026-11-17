@@ -22,7 +22,14 @@
   const DAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت'];
 
   /* ---------- الحفظ ---------- */
-  const SMS_DEFAULTS = { enabled: false, lastSync: 0, review: false, minAmount: 0, atmMode: 'transfer', pair: true, ignored: [], senderMap: {} };
+  const SMS_DEFAULTS = { enabled: false, lastSync: 0, review: false, minAmount: 0, atmMode: 'transfer', pair: true, ignored: [], senderMap: {}, senderNames: {}, hiddenSenders: [] };
+  const NOTIFY_DEFAULTS = {
+    enabled: false, budget: true, big: 0, lastCheck: 0, sent: {},
+    reminders: [
+      { id: 'r_cash', nid: 7101, title: 'صرفت كاش النهارده؟', body: 'دوس وقول اللي دفعته عشان يتسجل', kind: 'daily', hour: 22, minute: 0, weekday: 6, day: 1, action: 'voice', on: true },
+      { id: 'r_week', nid: 7102, title: 'راجع مصاريف الأسبوع', body: 'شوف صرفت على إيه الأسبوع ده', kind: 'weekly', hour: 20, minute: 0, weekday: 6, day: 1, action: 'open', on: false }
+    ]
+  };
   function fresh() {
     return {
       version: 1,
@@ -30,7 +37,7 @@
       categories: clone(MasroofyDefaults.categories),
       txns: [],
       budget: { monthly: 0 },
-      settings: { theme: 'system', defaultAccount: 'cash', currency: 'ج.م', voiceLang: 'ar-EG', autoSave: true, sms: clone(SMS_DEFAULTS) },
+      settings: { theme: 'system', defaultAccount: 'cash', currency: 'ج.م', voiceLang: 'ar-EG', autoSave: true, sms: clone(SMS_DEFAULTS), notify: clone(NOTIFY_DEFAULTS) },
       smsSeen: [], smsRules: [], smsPending: []
     };
   }
@@ -58,6 +65,9 @@
     d.smsRules = d.smsRules || [];
     d.smsPending = d.smsPending || [];
     d.settings.sms.senderMap = d.settings.sms.senderMap || {};
+    d.settings.sms.senderNames = d.settings.sms.senderNames || {};
+    d.settings.sms.hiddenSenders = d.settings.sms.hiddenSenders || [];
+    d.settings.notify = Object.assign(clone(NOTIFY_DEFAULTS), d.settings.notify || {});
     // الكروت اللي كانت متسجله قبل كده نعتبرها انت اللي كاتبها
     d.accounts.forEach(a => { if (!a.manualCards) a.manualCards = (a.cards || []).slice(); });
     return d;
@@ -79,6 +89,7 @@
       if (S.budget.monthly > 0) { const left = S.budget.monthly - monthSum; line2 += left >= 0 ? ` · فاضل ${fmt(left)}` : ' · عديت الميزانية'; }
       else line2 += ` · رصيدك ${fmt(S.accounts.reduce((x, a) => x + balance(a.id), 0))}`;
       if (S.smsPending.length) line2 = `📩 ${S.smsPending.length} مستنية موافقتك · ` + line2;
+      checkAlerts();
       const d = new Date();
       const data = {
         day, month: mon, todayText: fmt(sum(exp.filter(t => t.date === day))), line2, currency: S.settings.currency,
@@ -485,6 +496,7 @@
         <div class="list">${S.categories.map(c => `<button class="tx" data-edit-cat="${esc(c.id)}"><span class="tx-ic" style="background:color-mix(in srgb, ${c.color} 16%, var(--surface))">${esc(c.icon)}</span><span class="tx-main"><div class="tx-t">${esc(c.name)}</div><div class="tx-s">${c.kind === 'income' ? 'دخل' : 'مصروف'} · ${(c.keywords || []).length} كلمة بيتعرف بيها</div></span><span></span></button>`).join('')}</div>
       </div>
       ${smsCard()}
+      ${notifyCard()}
       <div class="card"><div class="card-head"><h2>البيانات</h2></div>
         <div class="actions" style="flex-wrap:wrap"><button class="btn" id="expCsv">تصدير Excel (CSV)</button><button class="btn" id="expJson">نسخة احتياطية (JSON)</button></div>
         <div class="actions" style="flex-wrap:wrap"><button class="btn" id="impJson">استرجاع نسخة احتياطية</button><button class="btn danger" id="wipe">مسح كل البيانات</button></div>
@@ -507,6 +519,7 @@
     $$('[data-edit-cat]', el).forEach(b => b.addEventListener('click', () => openCatSheet(catById(b.dataset.editCat))));
     $('#addCat', el).addEventListener('click', () => openCatSheet(null));
     bindSmsCard(el);
+    bindNotifyCard(el);
     $('#expCsv', el).addEventListener('click', exportCsv);
     $('#expJson', el).addEventListener('click', exportJson);
     $('#impJson', el).addEventListener('click', () => $('#importFile').click());
@@ -884,6 +897,8 @@
   /* ---------- رسايل البنك والمحافظ ---------- */
   const N = s => MasroofyParser.normalize(s);
   function senderLabel(id) {
+    const custom = (S.settings.sms.senderNames || {})[id];
+    if (custom) return custom;
     const p = MasroofySms.PROVIDERS.find(x => x.id === id);
     return p ? p.name : id.replace(/^sender:/, '');
   }
@@ -939,6 +954,7 @@
     }
     a.smsSenders = a.smsSenders || [];
     if (!a.smsSenders.includes(pid)) a.smsSenders.push(pid);
+    S.settings.sms.hiddenSenders = (S.settings.sms.hiddenSenders || []).filter(x => x !== pid);
     return a;
   }
 
@@ -1276,10 +1292,11 @@
 
   function smsControlSheet(keepTest) {
     const st = S.settings.sms;
-    const owner = pid => S.accounts.find(a => (a.smsSenders || []).includes(pid));
+    const owner = pid => accById((st.senderMap || {})[pid]) || S.accounts.find(a => (a.smsSenders || []).includes(pid));
     const cards = [...new Set([].concat(...S.accounts.map(a => a.cards || []), (st.ignored || []).filter(x => x.startsWith('card:')).map(x => x.slice(5))))];
     const accOpts = sel => S.accounts.map(a => `<option value="${esc(a.id)}" ${sel === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
-    const pids = [...new Set([].concat(...S.accounts.map(a => a.smsSenders || []), (st.ignored || []).filter(x => !x.startsWith('card:')), S.txns.map(t => t.smsFrom).filter(Boolean)))];
+    const hidden = st.hiddenSenders || [];
+    const pids = [...new Set([].concat(...S.accounts.map(a => a.smsSenders || []), (st.ignored || []).filter(x => !x.startsWith('card:')), Object.keys(st.senderMap || {}), S.txns.map(t => t.smsFrom).filter(x => x && !hidden.includes(x))))];
     const catOpts = sel => `<optgroup label="مصاريف">${S.categories.filter(c => c.kind === 'expense').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
       <optgroup label="دخل">${S.categories.filter(c => c.kind === 'income').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
       <option value="__atm" ${sel === '__atm' ? 'selected' : ''}>🏧 سحب من الماكينة (للكاش)</option>
@@ -1305,8 +1322,9 @@
 
       <div class="sec-title">الجهات</div>
       ${pids.length ? pids.map(pid => { const o = owner(pid); const ign = (st.ignored || []).includes(pid);
-        return `<div class="set-row"><div><div class="t">${esc(senderLabel(pid))}</div><div class="d">${S.txns.filter(t => t.smsFrom === pid).length} عملية</div></div>
-          <select class="input mini" data-sender="${esc(pid)}">${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايلها</option></select></div>`; }).join('')
+        return `<div class="card-row"><div class="card-info"><div class="t">${esc(senderLabel(pid))}</div><div class="d">${S.txns.filter(t => t.smsFrom === pid).length} عملية</div></div>
+          <select class="input mini" data-sender="${esc(pid)}">${o || ign ? '' : '<option value="" selected>اختار حساب</option>'}${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايلها</option></select>
+          <button class="icon-btn sm" data-sedit="${esc(pid)}" aria-label="تعديل الجهة">✎</button><button class="icon-btn sm no" data-sdel="${esc(pid)}" aria-label="شيل الجهة">✕</button></div>`; }).join('')
         : '<p class="hint">لسه مفيش جهات. أول ما رسالة من بنك أو محفظة تتقري هتظهر هنا، وتقدر تختار تروح لأنهي حساب أو تتجاهلها.</p>'}
 
       <div class="sec-title">قواعدك</div>
@@ -1327,8 +1345,41 @@
       $('#cPair', sh).onclick = () => { st.pair = !st.pair; save(); redraw(); };
       $('#cMin', sh).onchange = e => { st.minAmount = Math.max(0, parseFloat(N(e.target.value)) || 0); save(); toast(st.minAmount ? `هيتجاهل أي مبلغ أقل من ${fmt(st.minAmount)}` : 'هيسجل كل المبالغ'); };
       $('#cAtm', sh).onchange = e => { st.atmMode = e.target.value; save(); toast('اتحفظ. ده للرسايل الجاية'); };
+      // تعديل جهه: اسمها اللي يظهر والحساب
+      $$('[data-sedit]', sh).forEach(b => b.onclick = () => {
+        const pid = b.dataset.sedit; const o = owner(pid); const ign = (st.ignored || []).includes(pid);
+        openSheet(`<h3>تعديل الجهة</h3>
+          <div class="field"><label for="seName">الاسم اللي يظهر</label><input class="input" id="seName" value="${esc(senderLabel(pid))}"></div>
+          <div class="field"><label for="seAcc">رسايلها تتسجل على</label><select class="input" id="seAcc">${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايلها</option></select></div>
+          <p class="hint">المرسل في الرسايل: <span class="num">${esc(pid.replace(/^sender:/, ''))}</span></p>
+          <div class="actions"><button class="btn" id="seNo">رجوع</button><button class="btn primary" id="seOk">حفظ</button></div>`, sh2 => {
+          $('#seNo', sh2).onclick = () => smsControlSheet();
+          $('#seOk', sh2).onclick = () => {
+            const name = $('#seName', sh2).value.trim();
+            const def = (() => { const p0 = MasroofySms.PROVIDERS.find(x => x.id === pid); return p0 ? p0.name : pid.replace(/^sender:/, ''); })();
+            if (name && name !== def) st.senderNames[pid] = name; else delete st.senderNames[pid];
+            const target = $('#seAcc', sh2).value;
+            S.accounts.forEach(a => { a.smsSenders = (a.smsSenders || []).filter(x => x !== pid); });
+            st.ignored = (st.ignored || []).filter(x => x !== pid); delete st.senderMap[pid];
+            let moved = 0;
+            if (target === '__ignore') st.ignored.push(pid);
+            else { const a = accById(target); a.smsSenders = a.smsSenders || []; a.smsSenders.push(pid); st.senderMap[pid] = a.id; moved = moveSenderTxns(pid, a.id); }
+            save(); toast(`اتعدلت «${esc(senderLabel(pid))}»${moved ? ` · اتنقل ${moved} عملية` : ''}`); smsControlSheet();
+          };
+        });
+      });
+      // شيل جهه: عملياتها القديمه زي ما هي، ولو جت منها رساله تانيه هترجع تظهر
+      $$('[data-sdel]', sh).forEach(b => b.onclick = () => {
+        const pid = b.dataset.sdel;
+        const before = JSON.stringify({ accounts: S.accounts, sms: st });
+        S.accounts.forEach(a => { a.smsSenders = (a.smsSenders || []).filter(x => x !== pid); });
+        st.ignored = (st.ignored || []).filter(x => x !== pid); delete st.senderMap[pid]; delete st.senderNames[pid];
+        if (!st.hiddenSenders.includes(pid)) st.hiddenSenders.push(pid);
+        save(); redraw();
+        toast(`اتشالت «${esc(senderLabel(pid))}»`, 'تراجع', () => { const b2 = JSON.parse(before); S.accounts = b2.accounts; S.settings.sms = b2.sms; save(); smsControlSheet(); });
+      });
       $$('[data-sender]', sh).forEach(sel => sel.onchange = () => {
-        const pid = sel.dataset.sender, target = sel.value;
+        const pid = sel.dataset.sender, target = sel.value; if (!target) return;
         S.accounts.forEach(a => { a.smsSenders = (a.smsSenders || []).filter(x => x !== pid); });
         st.ignored = (st.ignored || []).filter(x => x !== pid);
         delete st.senderMap[pid];
@@ -1431,6 +1482,177 @@
     else if (a === 'add') setTimeout(() => openTxSheet(null), 150);
   }
 
+  /* ---------- التنبيهات ---------- */
+  const notifPlugin = () => plugin('LocalNotifications');
+  const WEEKDAYS = ['الأحد', 'الاتنين', 'التلات', 'الأربع', 'الخميس', 'الجمعة', 'السبت']; // weekday في الإشعارات: 1 = الأحد
+  function timeLabel(h, m) { const pm = h >= 12; const hh = h % 12 || 12; return `${hh}:${String(m).padStart(2, '0')} ${pm ? 'م' : 'ص'}`; }
+  function reminderLabel(r) {
+    const t = timeLabel(r.hour, r.minute);
+    if (r.kind === 'weekly') return `كل أسبوع يوم ${WEEKDAYS[(r.weekday || 1) - 1]} ${t}`;
+    if (r.kind === 'monthly') return `يوم ${r.day} كل شهر ${t}`;
+    if (r.kind === 'once') return `مرة واحدة ${r.date || ''} ${t}`;
+    return `كل يوم ${t}`;
+  }
+
+  // بيمسح كل التنبيهات المتسجله ويسجل اللي شغّال من جديد
+  async function scheduleReminders() {
+    const LN = notifPlugin(); if (!LN) return;
+    const nt = S.settings.notify;
+    try {
+      const pending = await LN.getPending();
+      if (pending && pending.notifications && pending.notifications.length) await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+      if (!nt.enabled) return;
+      const list = nt.reminders.filter(r => r.on).map(r => {
+        const n = { id: r.nid, title: r.title, body: r.body || 'دوس عشان تفتح مصروفي', extra: { url: 'masroofy://' + (r.action === 'voice' ? 'voice' : 'open') }, schedule: { allowWhileIdle: true } };
+        if (r.kind === 'once') {
+          const at = new Date(`${r.date}T${String(r.hour).padStart(2, '0')}:${String(r.minute).padStart(2, '0')}:00`);
+          if (!(at > new Date())) return null;
+          n.schedule.at = at;
+        } else {
+          const on = { hour: r.hour, minute: r.minute };
+          if (r.kind === 'weekly') on.weekday = r.weekday;
+          if (r.kind === 'monthly') on.day = r.day;
+          n.schedule.on = on;
+        }
+        return n;
+      }).filter(Boolean);
+      if (list.length) await LN.schedule({ notifications: list });
+    } catch (e) { /* ignore */ }
+  }
+
+  async function notifyNow(title, body, url) {
+    const LN = notifPlugin(); if (!LN || !S.settings.notify.enabled) return;
+    try { await LN.schedule({ notifications: [{ id: 8000 + Math.floor(Math.random() * 100000), title, body, extra: { url: url || 'masroofy://open' } }] }); } catch (e) { /* ignore */ }
+  }
+
+  // بعد كل حفظ: الميزانيه عدّت 80% أو 100%؟ وفيه مصروف كبير جديد؟
+  function checkAlerts() {
+    const nt = S.settings.notify;
+    if (!nt.enabled || !notifPlugin()) return;
+    const mon = iso(new Date()).slice(0, 7);
+    if (!nt.sent || nt.sent.month !== mon) nt.sent = { month: mon };
+    let changed = false;
+    if (nt.budget && S.budget.monthly > 0) {
+      const spent = S.txns.filter(t => t.type === 'expense' && t.date.slice(0, 7) === mon).reduce((x, t) => x + t.amount, 0);
+      const pct = spent / S.budget.monthly * 100;
+      if (pct >= 100 && !nt.sent.b100) { nt.sent.b100 = nt.sent.b80 = true; changed = true; notifyNow('عديت ميزانية الشهر', `صرفت ${fmt(spent)} من ${fmt(S.budget.monthly)} ${S.settings.currency}`); }
+      else if (pct >= 80 && !nt.sent.b80) { nt.sent.b80 = true; changed = true; notifyNow(`صرفت ${Math.round(pct)}% من ميزانية الشهر`, `فاضل ${fmt(S.budget.monthly - spent)} ${S.settings.currency}`); }
+    }
+    const since = nt.lastCheck || 0;
+    const fresh = S.txns.filter(t => t.type === 'expense' && Date.parse(t.createdAt || 0) > since);
+    if (nt.big > 0) fresh.filter(t => t.amount >= nt.big).slice(0, 3).forEach(t => {
+      const c = catById(t.categoryId), a = accById(t.accountId);
+      notifyNow(`مصروف كبير: ${fmt(t.amount)} ${S.settings.currency}`, `${c ? c.name : ''}${t.note ? ' · ' + t.note : ''}${a ? ' · من ' + a.name : ''}`);
+    });
+    const newest = S.txns.reduce((m, t) => Math.max(m, Date.parse(t.createdAt || 0) || 0), since);
+    if (newest > since) { nt.lastCheck = newest; changed = true; }
+    if (changed) try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
+  }
+
+  async function enableNotifications() {
+    const LN = notifPlugin(); if (!LN) return false;
+    let st = {};
+    try { st = await LN.checkPermissions(); if (st.display !== 'granted') st = await LN.requestPermissions(); } catch (e) { /* ignore */ }
+    if (st.display !== 'granted') {
+      openSheet(`<h3>محتاج إذن الإشعارات</h3><p class="hint" style="font-size:14px">افتح إعدادات التطبيق ← الإشعارات ← فعّلها، وارجع شغّل التنبيهات تاني.</p>
+        <div class="actions"><button class="btn" id="nClose">بعدين</button><button class="btn primary" id="nOpen">افتح إعدادات التطبيق</button></div>`, sh => {
+        $('#nClose', sh).onclick = closeSheet;
+        $('#nOpen', sh).onclick = () => { closeSheet(); const R = smsPlugin(); R && R.openAppSettings && R.openAppSettings().catch(() => {}); };
+      });
+      return false;
+    }
+    return true;
+  }
+
+  function notifyCard() {
+    const nt = S.settings.notify;
+    if (!isNative) return `<div class="card"><div class="card-head"><h2>التنبيهات</h2></div><p class="hint">التنبيهات شغالة على نسخة الأندرويد بس.</p></div>`;
+    return `<div class="card"><div class="card-head"><h2>التنبيهات</h2><button class="btn small ${nt.enabled ? 'primary' : ''}" id="nMain">${nt.enabled ? 'شغّالة' : 'مقفولة'}</button></div>
+      ${nt.enabled ? '' : '<p class="hint">شغّلها عشان يفكرك تسجل الكاش وينبهك لو قربت تخلص الميزانية.</p>'}
+      <div class="set-row"><div><div class="t">تنبيه الميزانية</div><div class="d">${S.budget.monthly > 0 ? 'لما توصل 80% ولما تعدّيها' : 'حط ميزانية شهرية فوق الأول'}</div></div><button class="btn small ${nt.budget ? 'primary' : ''}" id="nBudget">${nt.budget ? 'شغّال' : 'مقفول'}</button></div>
+      <div class="set-row"><div><div class="t">تنبيه المصروف الكبير</div><div class="d">أي مصروف أكبر من المبلغ ده. فاضي = مقفول</div></div><input class="input num mini" id="nBig" inputmode="decimal" placeholder="مثلاً 1000" value="${nt.big || ''}"></div>
+      <div class="sec-title" style="border-top:0;padding-top:0">التذكيرات</div>
+      ${nt.reminders.length ? nt.reminders.map(r => `<div class="card-row ${r.on ? '' : 'off'}"><div class="card-info"><div class="t">${esc(r.title)}</div><div class="d">${esc(reminderLabel(r))}${r.action === 'voice' ? ' · يفتح المايك' : ''}</div></div>
+          <button class="btn small ${r.on ? 'primary' : ''}" data-rtog="${esc(r.id)}">${r.on ? 'شغّال' : 'مقفول'}</button>
+          <button class="icon-btn sm" data-redit="${esc(r.id)}" aria-label="تعديل التذكير">✎</button><button class="icon-btn sm no" data-rrem="${esc(r.id)}" aria-label="امسح التذكير">✕</button></div>`).join('')
+        : '<p class="hint">مفيش تذكيرات.</p>'}
+      <div class="actions"><button class="btn primary" id="nAdd">+ ضيف تذكير</button><button class="btn" id="nTest">جرّب إشعار</button></div>
+      <p class="hint">لو التذكير بيتأخر، اعمل للتطبيق استثناء من توفير البطارية.</p>
+    </div>`;
+  }
+
+  function bindNotifyCard(el) {
+    const nt = S.settings.notify;
+    const main = $('#nMain', el); if (!main) return;
+    const after = () => { save(); scheduleReminders(); renderSet(); };
+    main.onclick = async () => {
+      if (!nt.enabled) { if (!(await enableNotifications())) return; nt.enabled = true; nt.lastCheck = Date.now(); toast('التنبيهات اشتغلت ✓'); }
+      else { nt.enabled = false; toast('التنبيهات اتقفلت'); }
+      after();
+    };
+    $('#nBudget', el).onclick = () => { nt.budget = !nt.budget; after(); };
+    $('#nBig', el).onchange = e => { nt.big = Math.max(0, parseFloat(N(e.target.value)) || 0); nt.lastCheck = Date.now(); save(); toast(nt.big ? `هينبهك على أي مصروف من ${fmt(nt.big)} وأكتر` : 'تنبيه المصروف الكبير اتقفل'); };
+    $$('[data-rtog]', el).forEach(b => b.onclick = async () => {
+      const r = nt.reminders.find(x => x.id === b.dataset.rtog); r.on = !r.on;
+      if (r.on && !nt.enabled) { if (await enableNotifications()) { nt.enabled = true; nt.lastCheck = Date.now(); } }
+      after();
+    });
+    $$('[data-redit]', el).forEach(b => b.onclick = () => reminderSheet(nt.reminders.find(x => x.id === b.dataset.redit)));
+    $$('[data-rrem]', el).forEach(b => b.onclick = () => {
+      const i = nt.reminders.findIndex(x => x.id === b.dataset.rrem); const [gone] = nt.reminders.splice(i, 1);
+      after(); toast(`اتمسح «${esc(gone.title)}»`, 'تراجع', () => { nt.reminders.splice(i, 0, gone); after(); });
+    });
+    $('#nAdd', el).onclick = () => reminderSheet(null);
+    $('#nTest', el).onclick = async () => {
+      if (!nt.enabled) { if (!(await enableNotifications())) return; nt.enabled = true; nt.lastCheck = Date.now(); after(); }
+      await notifyNow('ده إشعار تجربة من مصروفي', 'التنبيهات شغالة ✓');
+      toast('اتبعت إشعار. شوف شريط الإشعارات');
+    };
+  }
+
+  function reminderSheet(r) {
+    const nt = S.settings.notify;
+    const isNew = !r;
+    const d = Object.assign({ title: '', body: '', kind: 'daily', hour: 21, minute: 0, weekday: 6, day: 1, date: iso(new Date()), action: 'open', on: true }, r || {});
+    const pad = n => String(n).padStart(2, '0');
+    const draw = () => openSheet(`<h3>${isNew ? 'تذكير جديد' : 'تعديل التذكير'}</h3>
+      <div class="field"><label for="rmTitle">التذكير</label><input class="input" id="rmTitle" value="${esc(d.title)}" placeholder="مثلاً: ادفع الإيجار، اشحن الرصيد"></div>
+      <div class="field"><span class="lbl">بيتكرر</span><div class="seg">${[['daily', 'كل يوم'], ['weekly', 'كل أسبوع'], ['monthly', 'كل شهر'], ['once', 'مرة']].map(([k, n]) => `<button data-kind="${k}" aria-pressed="${d.kind === k}">${n}</button>`).join('')}</div></div>
+      <div class="row2">
+        ${d.kind === 'weekly' ? `<div class="field"><label for="rmWd">اليوم</label><select class="input" id="rmWd">${WEEKDAYS.map((w, i) => `<option value="${i + 1}" ${d.weekday === i + 1 ? 'selected' : ''}>${w}</option>`).join('')}</select></div>` : ''}
+        ${d.kind === 'monthly' ? `<div class="field"><label for="rmDay">يوم كام في الشهر</label><input class="input num" id="rmDay" type="number" min="1" max="28" value="${d.day}"></div>` : ''}
+        ${d.kind === 'once' ? `<div class="field"><label for="rmDate">التاريخ</label><input class="input" id="rmDate" type="date" value="${esc(d.date || iso(new Date()))}"></div>` : ''}
+        <div class="field"><label for="rmTime">الساعة</label><input class="input" id="rmTime" type="time" value="${pad(d.hour)}:${pad(d.minute)}"></div>
+      </div>
+      <div class="field"><label for="rmBody">رسالة تحت العنوان (اختياري)</label><input class="input" id="rmBody" value="${esc(d.body || '')}" placeholder="مثلاً: 4000 من انستاباي ١"></div>
+      <div class="field"><span class="lbl">لما تدوس عليه</span><div class="seg">${[['open', 'يفتح التطبيق'], ['voice', 'يفتح المايك']].map(([k, n]) => `<button data-act="${k}" aria-pressed="${d.action === k}">${n}</button>`).join('')}</div></div>
+      <div class="actions">${isNew ? '' : '<button class="btn danger" id="rmDel">امسح</button>'}<button class="btn primary" id="rmSave">حفظ</button></div>`, sh => {
+      const sync = () => {
+        d.title = $('#rmTitle', sh).value; d.body = $('#rmBody', sh).value;
+        const [h, m] = ($('#rmTime', sh).value || '21:00').split(':').map(Number); d.hour = h; d.minute = m;
+        if ($('#rmWd', sh)) d.weekday = +$('#rmWd', sh).value;
+        if ($('#rmDay', sh)) d.day = Math.min(28, Math.max(1, +$('#rmDay', sh).value || 1));
+        if ($('#rmDate', sh)) d.date = $('#rmDate', sh).value;
+      };
+      $$('[data-kind]', sh).forEach(b => b.onclick = () => { sync(); d.kind = b.dataset.kind; draw(); });
+      $$('[data-act]', sh).forEach(b => b.onclick = () => { d.action = b.dataset.act; $$('[data-act]', sh).forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+      $('#rmSave', sh).onclick = async () => {
+        sync();
+        if (!d.title.trim()) { toast('اكتب التذكير'); $('#rmTitle', sh).focus(); return; }
+        if (d.kind === 'once' && !(new Date(`${d.date}T${pad(d.hour)}:${pad(d.minute)}:00`) > new Date())) { toast('اختار وقت جاي مش فات'); return; }
+        d.title = d.title.trim();
+        if (isNew) { d.id = uid(); d.nid = 7200 + Math.floor(Math.random() * 90000); d.on = true; nt.reminders.push(d); }
+        else Object.assign(r, d);
+        if (!nt.enabled) { if (await enableNotifications()) { nt.enabled = true; nt.lastCheck = Date.now(); } }
+        save(); await scheduleReminders(); closeSheet(); if (view === 'set') renderSet();
+        toast(`${isNew ? 'اتضاف' : 'اتعدل'} التذكير: ${esc(reminderLabel(d))}${nt.enabled ? '' : ' (التنبيهات مقفولة)'}`);
+      };
+      const del = $('#rmDel', sh);
+      if (del) del.onclick = () => { nt.reminders = nt.reminders.filter(x => x.id !== r.id); save(); scheduleReminders(); closeSheet(); renderSet(); toast('اتمسح التذكير'); };
+    });
+    draw();
+  }
+
   /* ---------- تشغيل ---------- */
   applyTheme();
   go('home');
@@ -1443,6 +1665,9 @@
       App.addListener('backButton', () => { if ($('#scrim')) closeSheet(); else if (sel) { sel = null; renderTx(); } else if (view !== 'home') go('home'); else App.exitApp(); });
       App.addListener('resume', () => { smsSync(); pushWidget(); });
       App.addListener('appUrlOpen', e => handleWidgetUrl(e && e.url));
+      const LN = notifPlugin();
+      if (LN && LN.addListener) LN.addListener('localNotificationActionPerformed', e => { const u = e && e.notification && e.notification.extra && e.notification.extra.url; if (u) handleWidgetUrl(u); });
+      scheduleReminders();
       if (App.getLaunchUrl) App.getLaunchUrl().then(r => r && handleWidgetUrl(r.url)).catch(() => {});
     }
     const R = smsPlugin();
