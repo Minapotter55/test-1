@@ -1268,7 +1268,8 @@
   function smsControlSheet(keepTest) {
     const st = S.settings.sms;
     const owner = pid => S.accounts.find(a => (a.smsSenders || []).includes(pid));
-    const cards = [...new Set([].concat(...S.accounts.map(a => a.cards || []), (st.ignored || []).filter(x => x.startsWith('card:')).map(x => x.slice(5)), S.txns.map(t => t.smsCard).filter(Boolean)))];
+    const cards = [...new Set([].concat(...S.accounts.map(a => a.cards || []), (st.ignored || []).filter(x => x.startsWith('card:')).map(x => x.slice(5))))];
+    const accOpts = sel => S.accounts.map(a => `<option value="${esc(a.id)}" ${sel === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
     const pids = [...new Set([].concat(...S.accounts.map(a => a.smsSenders || []), (st.ignored || []).filter(x => !x.startsWith('card:')), S.txns.map(t => t.smsFrom).filter(Boolean)))];
     const catOpts = sel => `<optgroup label="مصاريف">${S.categories.filter(c => c.kind === 'expense').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
       <optgroup label="دخل">${S.categories.filter(c => c.kind === 'income').map(c => `<option value="${esc(c.id)}" ${sel === c.id ? 'selected' : ''}>${esc(c.icon + ' ' + c.name)}</option>`).join('')}</optgroup>
@@ -1287,9 +1288,11 @@
       <div class="sec-title">الكروت</div>
       <p class="hint">كل كارت أو حساب بيتعرف من آخر 4 أرقام في الرسالة، وعملياته بتروح للحساب اللي تختاره هنا مهما كانت الماكينة أو البنك اللي سحبت منه.</p>
       ${cards.length ? cards.map(cd => { const o = cardOwner(cd); const ign = (st.ignored || []).includes('card:' + cd);
-        return `<div class="set-row"><div><div class="t">كارت <span class="num">•••• ${esc(cd)}</span></div><div class="d">${S.txns.filter(t => t.smsCard === cd).length} عملية</div></div>
-          <select class="input mini" data-card="${esc(cd)}">${o || ign ? '' : '<option value="" selected>اختار حساب</option>'}${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايله</option></select></div>`; }).join('')
-        : '<p class="hint">لسه مفيش كروت. أول رسالة فيها رقم كارت هيظهر هنا، أو اكتب آخر 4 أرقام في صفحة الحساب نفسه.</p>'}
+        return `<div class="card-row"><div class="card-info"><div class="t">كارت <span class="num">•••• ${esc(cd)}</span></div><div class="d">${S.txns.filter(t => t.smsCard === cd).length} عملية</div></div>
+          <select class="input mini" data-card="${esc(cd)}">${o || ign ? '' : '<option value="" selected>اختار حساب</option>'}${S.accounts.map(a => `<option value="${esc(a.id)}" ${!ign && o && o.id === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__ignore" ${ign ? 'selected' : ''}>🚫 تجاهل رسايله</option></select>
+          <button class="icon-btn sm" data-cedit="${esc(cd)}" aria-label="تعديل رقم الكارت">✎</button><button class="icon-btn sm no" data-cdel="${esc(cd)}" aria-label="شيل الكارت">✕</button></div>`; }).join('')
+        : '<p class="hint">لسه مفيش كروت. ضيف كارت تحت، أو أول رسالة فيها رقم كارت هيظهر هنا لوحده.</p>'}
+      <div class="rule-add"><input class="input num" id="cNew" inputmode="numeric" maxlength="4" placeholder="آخر 4 أرقام، مثلاً 3195"><select class="input" id="cNewAcc">${accOpts(S.settings.defaultAccount)}</select><button class="btn small primary" id="cAdd">ضيف كارت</button></div>
 
       <div class="sec-title">الجهات</div>
       ${pids.length ? pids.map(pid => { const o = owner(pid); const ign = (st.ignored || []).includes(pid);
@@ -1329,9 +1332,53 @@
       $$('[data-card]', sh).forEach(sel => sel.onchange = () => {
         const cd = sel.dataset.card, target = sel.value; if (!target) return;
         st.ignored = (st.ignored || []).filter(x => x !== 'card:' + cd);
-        if (target === '__ignore') { S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== cd); }); st.ignored.push('card:' + cd); save(); toast(`مش هيسجل رسايل الكارت ${esc(cd)} تاني`); return redraw(); }
+        if (target === '__ignore') { S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== cd); a.manualCards = (a.manualCards || []).filter(x => x !== cd); }); st.ignored.push('card:' + cd); save(); toast(`مش هيسجل رسايل الكارت ${esc(cd)} تاني`); return redraw(); }
         const moved = linkCard(cd, target);
         save(); toast(`الكارت ${esc(cd)} بقى على «${esc(accById(target).name)}»${moved ? ` · اتنقل ${moved} عملية` : ''}`); redraw();
+      });
+      // إضافه كارت
+      $('#cAdd', sh).onclick = () => {
+        const cd = (N($('#cNew', sh).value).match(/\d/g) || []).join('');
+        if (cd.length !== 4) { toast('اكتب آخر 4 أرقام من الكارت'); $('#cNew', sh).focus(); return; }
+        const accId = $('#cNewAcc', sh).value;
+        if (cardOwner(cd) && cardOwner(cd).id === accId) { toast(`الكارت ${esc(cd)} موجود فعلاً على الحساب ده`); return; }
+        st.ignored = (st.ignored || []).filter(x => x !== 'card:' + cd);
+        const moved = linkCard(cd, accId);
+        save(); toast(`اتضاف الكارت ${esc(cd)} على «${esc(accById(accId).name)}»${moved ? ` · اتنقل ${moved} عملية` : ''}`); redraw();
+      };
+      // شيل كارت: الرسايل الجايه بيه هترجع للاختيار التلقائي، وعملياته القديمه زي ما هي
+      $$('[data-cdel]', sh).forEach(b => b.onclick = () => {
+        const cd = b.dataset.cdel;
+        const before = JSON.stringify({ accounts: S.accounts, ignored: st.ignored });
+        S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== cd); a.manualCards = (a.manualCards || []).filter(x => x !== cd); });
+        st.ignored = (st.ignored || []).filter(x => x !== 'card:' + cd);
+        save(); redraw();
+        toast(`اتشال الكارت ${esc(cd)}`, 'تراجع', () => { const b2 = JSON.parse(before); S.accounts = b2.accounts; st.ignored = b2.ignored; save(); redraw(); });
+      });
+      // تعديل رقم كارت (لو اتكتب غلط أو الكارت اتجدد)
+      $$('[data-cedit]', sh).forEach(b => b.onclick = () => {
+        const old = b.dataset.cedit; const o = cardOwner(old);
+        const back = () => smsControlSheet({ body: '', from: '' });
+        openSheet(`<h3>تعديل الكارت ${esc(old)}</h3>
+          <div class="field"><label for="ceNum">آخر 4 أرقام</label><input class="input num amount-input" id="ceNum" inputmode="numeric" maxlength="4" value="${esc(old)}"></div>
+          <div class="field"><label for="ceAcc">على حساب</label><select class="input" id="ceAcc">${accOpts(o ? o.id : S.settings.defaultAccount)}</select></div>
+          <label class="check-row"><input type="checkbox" id="ceMove" checked> العمليات القديمة اللي جت بالرقم ده تاخد الرقم الجديد</label>
+          <div class="actions"><button class="btn" id="ceNo">رجوع</button><button class="btn primary" id="ceOk">حفظ</button></div>`, sh2 => {
+          $('#ceNo', sh2).onclick = back;
+          $('#ceOk', sh2).onclick = () => {
+            const cd = (N($('#ceNum', sh2).value).match(/\d/g) || []).join('');
+            if (cd.length !== 4) { toast('اكتب آخر 4 أرقام من الكارت'); return; }
+            const accId = $('#ceAcc', sh2).value;
+            const ign = (st.ignored || []).includes('card:' + old);
+            S.accounts.forEach(a => { a.cards = (a.cards || []).filter(x => x !== old); a.manualCards = (a.manualCards || []).filter(x => x !== old); });
+            if ($('#ceMove', sh2).checked) S.txns.forEach(t => { if (t.smsCard === old) t.smsCard = cd; });
+            st.ignored = (st.ignored || []).filter(x => x !== 'card:' + old && x !== 'card:' + cd);
+            let moved = 0;
+            if (ign) st.ignored.push('card:' + cd); else moved = linkCard(cd, accId);
+            save(); toast(`اتعدل الكارت ${esc(old)} لـ ${esc(cd)} على «${esc(accById(accId).name)}»${moved ? ` · اتنقل ${moved} عملية` : ''}`);
+            back();
+          };
+        });
       });
       $$('[data-rdel]', sh).forEach(b => b.onclick = () => { S.smsRules = S.smsRules.filter(r => r.id !== b.dataset.rdel); save(); redraw(); });
       $('#rAdd', sh).onclick = () => {
