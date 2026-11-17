@@ -79,7 +79,16 @@
       if (S.budget.monthly > 0) { const left = S.budget.monthly - monthSum; line2 += left >= 0 ? ` · فاضل ${fmt(left)}` : ' · عديت الميزانية'; }
       else line2 += ` · رصيدك ${fmt(S.accounts.reduce((x, a) => x + balance(a.id), 0))}`;
       if (S.smsPending.length) line2 = `📩 ${S.smsPending.length} مستنية موافقتك · ` + line2;
-      const r = W.update({ day, month: mon, todayText: fmt(sum(exp.filter(t => t.date === day))), line2, currency: S.settings.currency });
+      const d = new Date();
+      const data = {
+        day, month: mon, todayText: fmt(sum(exp.filter(t => t.date === day))), line2, currency: S.settings.currency,
+        dateText: `صرفت النهارده · ${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`,
+        budgetPct: S.budget.monthly > 0 ? String(Math.round(monthSum / S.budget.monthly * 100)) : '-1'
+      };
+      // أهم 3 حسابات: اللي فيهم فلوس الأول، بنفس ترتيبك
+      const accs = S.accounts.map((a, i) => ({ a, b: balance(a.id), i })).sort((x, y) => (y.b !== 0) - (x.b !== 0) || x.i - y.i).slice(0, 3);
+      for (let k = 1; k <= 3; k++) { const x = accs[k - 1]; data['acc' + k + 'n'] = x ? x.a.name : ''; data['acc' + k + 'v'] = x ? fmt(x.b) : ''; }
+      const r = W.update(data);
       if (r && r.catch) r.catch(() => {});
     }, 400);
   }

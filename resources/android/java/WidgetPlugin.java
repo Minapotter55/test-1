@@ -11,7 +11,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /** التطبيق بيبعت الأرقام هنا بعد كل تعديل، والويدجت بيتحدث على طول */
 @CapacitorPlugin(name = "Widget")
 public class WidgetPlugin extends Plugin {
-    private static final String[] KEYS = { "day", "month", "todayText", "line2", "currency" };
+    private static final String[] KEYS = { "day", "month", "todayText", "line2", "currency", "dateText", "budgetPct",
+        "acc1n", "acc1v", "acc2n", "acc2v", "acc3n", "acc3v" };
 
     @PluginMethod
     public void update(PluginCall call) {

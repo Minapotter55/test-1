@@ -63,11 +63,23 @@ jobs:
                   </intent>
               </queries>
           </manifest>""")
-          s = s.replace('</application>', """    <receiver android:name=".MasroofyWidget" android:exported="false" android:label="مصروفي">
+          s = s.replace('</application>', """    <receiver android:name=".MasroofyWidgetSmall" android:exported="false" android:label="مصروفي (صغير)">
+                      <intent-filter>
+                          <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                      </intent-filter>
+                      <meta-data android:name="android.appwidget.provider" android:resource="@xml/masroofy_widget_small_info" />
+                  </receiver>
+                  <receiver android:name=".MasroofyWidget" android:exported="false" android:label="مصروفي">
                       <intent-filter>
                           <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                       </intent-filter>
                       <meta-data android:name="android.appwidget.provider" android:resource="@xml/masroofy_widget_info" />
+                  </receiver>
+                  <receiver android:name=".MasroofyWidgetLarge" android:exported="false" android:label="مصروفي (كبير)">
+                      <intent-filter>
+                          <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                      </intent-filter>
+                      <meta-data android:name="android.appwidget.provider" android:resource="@xml/masroofy_widget_large_info" />
                   </receiver>
                   <receiver android:name=".SmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
                       <intent-filter android:priority="999">
